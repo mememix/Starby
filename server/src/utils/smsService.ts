@@ -194,14 +194,17 @@ export async function sendLoginCode(phone: string): Promise<{
     };
   }
 
-  // 检查是否频繁发送（1分钟内只能发送一次）
-  const lastSent = verificationCodes.get(phone);
-  if (lastSent && Date.now() - lastSent.lastSentTime < 60 * 1000) {
-    const remainingSeconds = Math.ceil(60 - (Date.now() - lastSent.lastSentTime) / 1000);
-    return {
-      success: false,
-      message: `请${remainingSeconds}秒后再试`
-    };
+  // 开发环境下取消发送频率限制
+  if (process.env.NODE_ENV !== 'development') {
+    // 检查是否频繁发送（1分钟内只能发送一次）
+    const lastSent = verificationCodes.get(phone);
+    if (lastSent && Date.now() - lastSent.lastSentTime < 60 * 1000) {
+      const remainingSeconds = Math.ceil(60 - (Date.now() - lastSent.lastSentTime) / 1000);
+      return {
+        success: false,
+        message: `请${remainingSeconds}秒后再试`
+      };
+    }
   }
 
   // 生成验证码
