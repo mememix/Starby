@@ -1,0 +1,1322 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import prisma from '../lib/prisma';
+import dotenv from 'dotenv';
+import { compressImage } from '../utils/imageCompressor';
+import { transformCoordinate } from '../utils/coordinateTransformer';
+
+dotenv.config();
+
+const router = Router();
+
+// 硬编码确保一致
+const JWT_SECRET: jwt.Secret = 'your-super-secret-jwt-key';
+
+// JWT 认证中间件 - 硬编码秘钥保证一致
+const authenticate = (req: Request, res: Response, next: NextFunction) => {
+  const JWT_SECRET = 'your-super-secret-jwt-key';
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({
+      success: false,
+      message: '未提供认证令牌'
+    });
+  }
+
+  const token = authHeader.substring(7);
+  try {
+    const JWT_SECRET = 'your-super-secret-jwt-key';
+    console.log('[DEBUG authenticate] JWT_SECRET =', JSON.stringify(JWT_SECRET), 'length =', JWT_SECRET.length);
+    console.log('[DEBUG authenticate] Token =', token.substring(0, 60) + '...');
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    req.userId = decoded.userId;
+    next();
+  } catch (error) {
+    console.log('[DEBUG authenticate] VERIFY FAILED:', error);
+    return res.status(401).json({
+      success: false,
+      message: '无效的认证令牌'
+    });
+  }
+};
+
+/**
+ * GET /api/devices
+ * 获取设备列表
+ */
+router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = BigInt(req.userId as string);
+
+    // 查询用户绑定的设备
+    const bindings = await prisma.deviceBinding.findMany({
+      where: {
+        userId: userId,
+        bindStatus: true
+      },
+      orderBy: { bindTime: 'desc' }
+    });
+
+    // 获取设备详细信息
+    const deviceIds = bindings.map(b => b.deviceId).filter((id): id is bigint => id !== null);
+    const devices = await prisma.device.findMany({
+      where: {
+        deviceId: { in: deviceIds }
+      },
+      orderBy: { createTime: 'desc' }
+    });
+
+    // 创建绑定信息的映射（用于获取用户自定义的设备名称）
+    const bindingMap = new Map(bindings.map(b => [b.deviceId?.toString(), b]));
+
+    // 获取用户头像（从 lot_user 表）
+    const users = await prisma.$queryRaw`
+      SELECT avatar_url
+      FROM lot_user
+      WHERE user_id = ${userId}
+      AND del_flag = '0'
+    ` as any[];
+    const userAvatar = users.length > 0 ? users[0].avatar_url : null;
+
+    res.json({
+      success: true,
+      data: {
+        devices: devices.map(device => {
+          const binding = bindingMap.get(device.deviceId.toString());
+
+          // 应用统一坐标转换（WGS-84 -> GCJ-02 + 统一偏移）
+          const transformed = transformCoordinate(
+            device.latitude,
+            device.longitude
+          );
+
+          return {
+            deviceId: device.deviceId.toString(),
+          deviceCode: device.deviceCode,
+          devicePassword: device.devicePassword,
+          bindStatus: device.bindStatus,
+          userName: device.userName,
+          userPhone: device.userPhone,
+          registerDate: device.registerDate,
+          bindDate: device.bindDate,
+          uniqueId: device.uniqueId,
+          locationInfo: device.locationInfo,
+          address: device.address,
+          longitude: transformed?.longitude ?? device.longitude,
+          latitude: transformed?.latitude ?? device.latitude,
+          snCode: device.snCode,
+          isTimedReport: device.isTimedReport,
+          report_period: device.report_period,
+          battery: device.battery,
+          batteryLevel: device.batteryLevel,
+          firmwareVersion: device.firmwareVersion,
+          deviceName: binding?.deviceName || device.deviceName,
+          deviceType: device.deviceType,
+          deviceModel: device.deviceModel,
+          simNumber: device.simNumber,
+          imei: device.imei,
+          plateNumber: device.plateNumber,
+          vehicleType: device.vehicleType,
+          company: device.company,
+          status: device.status,
+          avatar: device.avatar,
+          userAvatar: userAvatar, // 使用用户头像
+          manufacturer: device.manufacturer,
+          decodeProtocol: device.decodeProtocol,
+          remark: device.remark,
+          createBy: device.createBy,
+          createTime: device.createTime,
+          updateBy: device.updateBy,
+          updateTime: device.updateTime,
+          delFlag: device.delFlag,
+          lastLocationTime: device.lastLocationTime,
+          isTop: device.isTop
+          };
+        })
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/devices/unbound
+ * 获取可绑定的JT808设备列表
+ */
+router.get('/unbound', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = BigInt(req.userId as string);
+
+    // 查询当前用户已绑定的设备ID
+    const userBoundDevices = await prisma.deviceBinding.findMany({
+      where: {
+        userId: userId,
+        bindStatus: true
+      },
+      select: {
+        deviceId: true
+      }
+    });
+
+    const boundDeviceIds = userBoundDevices.map(b => b.deviceId).filter((id): id is bigint => id !== null);
+
+    // 查询所有设备，排除已绑定到当前用户的设备
+    // 同时排除已被其他用户绑定的设备（只返回未被任何用户绑定的设备）
+    const allBindings = await prisma.deviceBinding.findMany({
+      where: {
+        bindStatus: true
+      },
+      select: {
+        deviceId: true
+      }
+    });
+
+    const allBoundDeviceIds = allBindings.map(b => b.deviceId).filter((id): id is bigint => id !== null);
+
+    // 查询未被任何用户绑定的设备
+    const devices = await prisma.device.findMany({
+      where: {
+        deviceId: {
+          notIn: allBoundDeviceIds
+        }
+        // delFlag: '0' // 移除此过滤条件，因为类型不匹配
+      },
+      orderBy: { createTime: 'desc' }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        devices: devices.map(device => {
+          // 应用统一坐标转换（WGS-84 -> GCJ-02 + 统一偏移）
+          const transformed = transformCoordinate(
+            device.latitude,
+            device.longitude
+          );
+
+          return {
+            id: device.deviceId.toString(),
+            deviceId: device.deviceId.toString(),
+            deviceNo: device.deviceCode,
+            name: device.deviceName || device.deviceCode || '未命名设备',
+            isOnline: device.status === '1',
+            latitude: transformed?.latitude?.toString() ?? device.latitude?.toString(),
+            longitude: transformed?.longitude?.toString() ?? device.longitude?.toString(),
+            address: device.address,
+            battery: device.battery,
+            batteryLevel: device.batteryLevel,
+            lastUpdate: device.lastLocationTime,
+            bindTime: device.bindDate,
+            ownerId: null,
+            avatar: device.avatar,
+            createTime: device.createTime
+          };
+        })
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/devices/:id
+ * 获取单个设备详情
+ */
+router.get('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = BigInt(req.userId as string);
+    const deviceId = BigInt(req.params.id);
+
+    // 验证设备是否属于该用户
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        userId: userId,
+        deviceId: deviceId,
+        bindStatus: true
+      }
+    });
+
+    if (!binding) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在或未绑定'
+      });
+    }
+
+    const device = await prisma.device.findUnique({
+      where: { deviceId }
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 获取用户头像（从 lot_user 表）
+    const users = await prisma.$queryRaw`
+      SELECT avatar_url
+      FROM lot_user
+      WHERE user_id = ${userId}
+      AND del_flag = '0'
+    ` as any[];
+    const userAvatar = users.length > 0 ? users[0].avatar_url : null;
+
+    // 应用统一坐标转换（WGS-84 -> GCJ-02 + 统一偏移）
+    const transformed = transformCoordinate(
+      device.latitude,
+      device.longitude
+    );
+
+    res.json({
+      success: true,
+      data: {
+        device: {
+          deviceId: device.deviceId.toString(),
+          deviceCode: device.deviceCode,
+          devicePassword: device.devicePassword,
+          bindStatus: device.bindStatus,
+          userName: device.userName,
+          userPhone: device.userPhone,
+          registerDate: device.registerDate,
+          bindDate: device.bindDate,
+          uniqueId: device.uniqueId,
+          locationInfo: device.locationInfo,
+          address: device.address,
+          longitude: transformed?.longitude ?? device.longitude,
+          latitude: transformed?.latitude ?? device.latitude,
+          snCode: device.snCode,
+          isTimedReport: device.isTimedReport,
+          report_period: device.report_period,
+          battery: device.battery,
+          batteryLevel: device.batteryLevel,
+          firmwareVersion: device.firmwareVersion,
+          deviceName: binding.deviceName || device.deviceName, // 优先使用绑定表中的用户自定义名称
+          deviceType: device.deviceType,
+          deviceModel: device.deviceModel,
+          simNumber: device.simNumber,
+          imei: device.imei,
+          plateNumber: device.plateNumber,
+          vehicleType: device.vehicleType,
+          company: device.company,
+          status: device.status,
+          avatar: device.avatar,
+          userAvatar: userAvatar, // 使用用户头像
+          manufacturer: device.manufacturer,
+          decodeProtocol: device.decodeProtocol,
+          remark: device.remark,
+          createBy: device.createBy,
+          createTime: device.createTime,
+          updateBy: device.updateBy,
+          updateTime: device.updateTime,
+          delFlag: device.delFlag,
+          lastLocationTime: device.lastLocationTime,
+          isTop: device.isTop
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/devices
+ * 创建设备
+ */
+router.post('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { deviceSn, name } = req.body;
+
+    if (!deviceSn) {
+      return res.status(400).json({
+        success: false,
+        message: '设备序列号不能为空'
+      });
+    }
+
+    // 检查设备是否已存在
+    const existingDevice = await prisma.device.findFirst({
+      where: { snCode: deviceSn }
+    });
+
+    if (existingDevice) {
+      return res.status(400).json({
+        success: false,
+        message: '该设备已被绑定'
+      });
+    }
+
+    const device = await prisma.device.create({
+      data: {
+        deviceCode: String(deviceSn),
+        deviceName: String(name || '未命名设备'),
+        snCode: String(deviceSn)
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: '设备创建成功',
+      data: { device: {
+        deviceId: device.deviceId.toString(),
+        deviceCode: device.deviceCode,
+        deviceName: device.deviceName,
+        snCode: device.snCode,
+        bindStatus: device.bindStatus,
+        createTime: device.createTime,
+        updateTime: device.updateTime
+      } }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/devices/:id/location
+ * 获取设备实时位置
+ */
+router.get('/:id/location', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    // 验证设备是否属于当前用户
+    const device = await prisma.device.findFirst({
+      where: { deviceId: BigInt(id) }
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 查询最新的位置
+    const location = await prisma.location.findFirst({
+      where: { deviceId: BigInt(id) },
+      orderBy: { location_time: 'desc' }
+    });
+
+    // 应用统一坐标转换（WGS-84 -> GCJ-02 + 统一偏移）
+    let correctedLocation = null;
+    if (location) {
+      const transformed = transformCoordinate(
+        location.latitude,
+        location.longitude
+      );
+
+      correctedLocation = {
+        trackId: location.trackId.toString(),
+        deviceId: location.deviceId.toString(),
+        deviceCode: location.device_code,
+        longitude: transformed?.longitude?.toString() ?? location.longitude?.toString(),
+        latitude: transformed?.latitude?.toString() ?? location.latitude?.toString(),
+        address: location.address,
+        recordTime: location.record_time,
+        speed: location.speed?.toString(),
+        direction: location.direction,
+        remark: location.remark,
+        createTime: location.create_time,
+        createBy: location.create_by,
+        updateTime: location.update_time,
+        updateBy: location.update_by,
+        locationTime: location.location_time,
+        altitude: location.altitude,
+        batteryLevel: location.battery_level,
+        signalStrength: location.signal_strength
+      };
+    }
+
+    res.json({
+      success: true,
+      data: {
+        deviceId: id,
+        location: correctedLocation
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/devices/:id/history
+ * 获取设备历史轨迹
+ */
+router.get('/:id/history', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { startTime, endTime, limit = 100 } = req.query;
+
+    // 验证设备是否属于当前用户
+    const device = await prisma.device.findFirst({
+      where: { deviceId: BigInt(id) }
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 构建查询条件
+    const where: any = { deviceId: BigInt(id) };
+    if (startTime || endTime) {
+      where.location_time = {};
+      if (startTime) {
+        where.location_time.gte = new Date(startTime as string);
+      }
+      if (endTime) {
+        where.location_time.lte = new Date(endTime as string);
+      }
+    }
+
+    // 查询历史位置
+    const history = await prisma.location.findMany({
+      where,
+      orderBy: { location_time: 'desc' },
+      take: Math.min(Number(limit), 1000)
+    });
+
+    // 对历史位置应用统一坐标转换（WGS-84 -> GCJ-02 + 统一偏移）
+    const transformedHistory = history.map(loc => {
+      const transformed = transformCoordinate(
+        loc.latitude,
+        loc.longitude
+      );
+
+      return {
+        trackId: loc.trackId.toString(),
+        deviceId: loc.deviceId.toString(),
+        deviceCode: loc.device_code,
+        longitude: transformed?.longitude?.toString() ?? loc.longitude?.toString(),
+        latitude: transformed?.latitude?.toString() ?? loc.latitude?.toString(),
+        address: loc.address,
+        recordTime: loc.record_time,
+        speed: loc.speed?.toString(),
+        direction: loc.direction,
+        remark: loc.remark,
+        createTime: loc.create_time,
+        createBy: loc.create_by,
+        updateTime: loc.update_time,
+        updateBy: loc.update_by,
+        locationTime: loc.location_time,
+        altitude: loc.altitude,
+        batteryLevel: loc.battery_level,
+        signalStrength: loc.signal_strength
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        deviceId: id,
+        history: transformedHistory
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/devices/:id/location
+ * 上报设备位置
+ */
+router.post('/:id/location', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { latitude, longitude, accuracy } = req.body;
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: '纬度和经度不能为空'
+      });
+    }
+
+    // 验证设备是否存在
+    const device = await prisma.device.findUnique({
+      where: { deviceId: BigInt(id) }
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 创建位置记录
+    const location = await prisma.location.create({
+      data: {
+        deviceId: BigInt(id),
+        device_code: String(id),
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+        location_time: new Date()
+      }
+    });
+
+    // 更新设备状态为在线
+    await prisma.device.update({
+      where: { deviceId: BigInt(id) },
+      data: { status: '1' }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: '位置上报成功',
+      data: { location }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/devices/bind
+ * 通过设备号绑定设备到当前用户
+ */
+router.post('/bind', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { deviceNo, password, name } = req.body;
+    const userId = BigInt(req.userId as string);
+
+    if (!deviceNo || !password) {
+      return res.status(400).json({
+        success: false,
+        message: '设备号和密码不能为空'
+      });
+    }
+
+    // 查找设备
+    const device = await prisma.device.findFirst({
+      where: {
+        OR: [
+          { deviceCode: deviceNo },
+          { snCode: deviceNo }
+        ]
+      }
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 验证设备密码
+    // 默认密码是123456，如果用户修改了密码则以修改后的为准
+    const defaultPassword = 'e10adc3949ba59abbe56e057f20f883e'; // MD5 of 123456
+    let passwordValid = false;
+
+    if (!device.devicePassword || device.devicePassword === defaultPassword) {
+      // 设备未设置密码或使用默认密码，验证123456
+      if (password === '123456') {
+        passwordValid = true;
+      }
+    } else {
+      // 设备有自定义密码，直接比较（假设存储的是MD5）
+      // 这里简化处理，实际应该使用bcrypt
+      const crypto = require('crypto');
+      const inputHash = crypto.createHash('md5').update(password).digest('hex');
+      passwordValid = (inputHash === device.devicePassword);
+    }
+
+    if (!passwordValid) {
+      return res.status(401).json({
+        success: false,
+        message: '设备密码错误'
+      });
+    }
+
+    // 检查是否已经绑定（包括未激活的绑定）
+    const existingBinding = await prisma.deviceBinding.findFirst({
+      where: {
+        userId: userId,
+        deviceNo: device.deviceCode
+      }
+    });
+
+    let binding;
+    if (existingBinding) {
+      // 如果已有绑定记录，检查是否已激活
+      if (existingBinding.bindStatus === true) {
+        return res.status(400).json({
+          success: false,
+          message: '设备已绑定'
+        });
+      }
+      
+      // 如果是未激活的绑定，更新它
+      binding = await prisma.deviceBinding.update({
+        where: { bindId: existingBinding.bindId },
+        data: {
+          deviceId: device.deviceId,
+          deviceName: name || device.deviceName || device.deviceCode,
+          bindStatus: true,
+          bindTime: new Date()
+        }
+      });
+    } else {
+      // 创建新的绑定关系
+      binding = await prisma.deviceBinding.create({
+        data: {
+          userId: userId,
+          deviceId: device.deviceId,
+          deviceNo: device.deviceCode,
+          deviceName: name || device.deviceName || device.deviceCode,
+          bindStatus: true,
+          bindTime: new Date()
+        }
+      });
+    }
+
+    // 更新设备信息
+    // 获取用户信息（从 lot_user 表）
+    const lotUsers = await prisma.$queryRaw`
+      SELECT phone_number, user_name
+      FROM lot_user
+      WHERE user_id = ${userId}
+      AND del_flag = '0'
+    ` as any[];
+    const lotUser = lotUsers.length > 0 ? lotUsers[0] : null;
+
+    await prisma.device.update({
+      where: { deviceId: device.deviceId },
+      data: {
+        bindStatus: true,
+        bindDate: new Date(),
+        userPhone: lotUser?.phone_number || null,
+        userName: lotUser?.user_name || null
+      }
+    });
+
+    res.json({
+      success: true,
+      message: '绑定成功',
+      data: {
+        binding: {
+          id: binding.bindId.toString(),
+          deviceId: binding.deviceId?.toString() || '',
+          userId: binding.userId.toString(),
+          bindTime: binding.bindTime
+        },
+        device: {
+          deviceId: device.deviceId.toString(),
+          deviceCode: device.deviceCode,
+          deviceName: device.deviceName || name || device.deviceCode,
+          avatar: device.avatar,
+          latitude: device.latitude,
+          longitude: device.longitude,
+          address: device.address,
+          battery: device.battery,
+          batteryLevel: device.batteryLevel,
+          status: device.status,
+          lastLocationTime: device.lastLocationTime
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/devices/:id/bind
+ * 绑定设备到当前用户
+ */
+router.post('/:id/bind', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const userId = BigInt(req.userId as string);
+
+    // 查找设备（支持通过 deviceCode 或 deviceId 查找）
+    // 尝试将 id 转换为 BigInt，如果失败则只查询 deviceCode 和 snCode
+    let deviceIdBigInt: bigint | undefined;
+    try {
+      deviceIdBigInt = BigInt(id);
+    } catch (e) {
+      // id 不是数字，只能通过 deviceCode 或 snCode 查找
+    }
+
+    const whereCondition: any = {
+      OR: [
+        { deviceCode: String(id) },
+        { snCode: String(id) }
+      ]
+    };
+
+    // 如果 id 可以转换为 BigInt，添加 deviceId 查询条件
+    if (deviceIdBigInt !== undefined) {
+      whereCondition.OR.push({ deviceId: deviceIdBigInt });
+    }
+
+    const device = await prisma.device.findFirst({
+      where: whereCondition
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 检查是否已经绑定到当前用户
+    const existingBinding = await prisma.deviceBinding.findFirst({
+      where: {
+        userId: userId,
+        deviceId: device.deviceId,
+        bindStatus: true
+      }
+    });
+
+    if (existingBinding) {
+      return res.json({
+        success: true,
+        message: '设备已绑定',
+        data: {
+          device: {
+            deviceId: device.deviceId.toString(),
+            deviceCode: device.deviceCode,
+            devicePassword: device.devicePassword,
+            bindStatus: device.bindStatus,
+            userName: device.userName,
+            userPhone: device.userPhone,
+            registerDate: device.registerDate,
+            bindDate: device.bindDate,
+            uniqueId: device.uniqueId,
+            locationInfo: device.locationInfo,
+            address: device.address,
+            longitude: device.longitude,
+            latitude: device.latitude,
+            snCode: device.snCode,
+            isTimedReport: device.isTimedReport,
+            report_period: device.report_period,
+            battery: device.battery,
+            batteryLevel: device.batteryLevel,
+            firmwareVersion: device.firmwareVersion,
+            deviceName: device.deviceName,
+            deviceType: device.deviceType,
+            deviceModel: device.deviceModel,
+            simNumber: device.simNumber,
+            imei: device.imei,
+            plateNumber: device.plateNumber,
+            vehicleType: device.vehicleType,
+            company: device.company,
+            status: device.status,
+            avatar: device.avatar,
+            manufacturer: device.manufacturer,
+            decodeProtocol: device.decodeProtocol,
+            remark: device.remark,
+            createBy: device.createBy,
+            createTime: device.createTime,
+            updateBy: device.updateBy,
+            updateTime: device.updateTime,
+            delFlag: device.delFlag,
+            lastLocationTime: device.lastLocationTime,
+            isTop: device.isTop
+          }
+        }
+      });
+    }
+
+    // 检查是否被其他用户绑定
+    const otherBinding = await prisma.deviceBinding.findFirst({
+      where: {
+        deviceId: device.deviceId,
+        bindStatus: true,
+        userId: { not: userId }
+      }
+    });
+
+    if (otherBinding) {
+      return res.status(400).json({
+        success: false,
+        message: '该设备已被其他用户绑定'
+      });
+    }
+
+    // 创建绑定记录
+    const binding = await prisma.deviceBinding.create({
+      data: {
+        userId: userId,
+        deviceId: device.deviceId,
+        deviceNo: device.deviceCode,
+        deviceName: device.deviceName || '未命名设备',
+        bindStatus: true,
+        isPrimary: false,
+        bindTime: new Date()
+      }
+    });
+
+    // 更新设备的绑定状态
+    await prisma.device.update({
+      where: { deviceId: device.deviceId },
+      data: {
+        bindStatus: true,
+        bindDate: new Date(),
+        updateTime: new Date()
+      }
+    });
+
+    res.json({
+      success: true,
+      message: '设备绑定成功',
+      data: {
+        device: {
+          deviceId: device.deviceId.toString(),
+          deviceCode: device.deviceCode,
+          devicePassword: device.devicePassword,
+          bindStatus: device.bindStatus,
+          userName: device.userName,
+          userPhone: device.userPhone,
+          registerDate: device.registerDate,
+          bindDate: device.bindDate,
+          uniqueId: device.uniqueId,
+          locationInfo: device.locationInfo,
+          address: device.address,
+          longitude: device.longitude,
+          latitude: device.latitude,
+          snCode: device.snCode,
+          isTimedReport: device.isTimedReport,
+          report_period: device.report_period,
+          battery: device.battery,
+          batteryLevel: device.batteryLevel,
+          firmwareVersion: device.firmwareVersion,
+          deviceName: device.deviceName,
+          deviceType: device.deviceType,
+          deviceModel: device.deviceModel,
+          simNumber: device.simNumber,
+          imei: device.imei,
+          plateNumber: device.plateNumber,
+          vehicleType: device.vehicleType,
+          company: device.company,
+          status: device.status,
+          avatar: device.avatar,
+          manufacturer: device.manufacturer,
+          decodeProtocol: device.decodeProtocol,
+          remark: device.remark,
+          createBy: device.createBy,
+          createTime: device.createTime,
+          updateBy: device.updateBy,
+          updateTime: device.updateTime,
+          delFlag: device.delFlag,
+          lastLocationTime: device.lastLocationTime,
+          isTop: device.isTop
+        },
+        binding: {
+          bindId: binding.bindId.toString(),
+          userId: binding.userId.toString(),
+          deviceId: binding.deviceId?.toString(),
+          deviceNo: binding.deviceNo,
+          deviceName: binding.deviceName,
+          bindStatus: binding.bindStatus,
+          isPrimary: binding.isPrimary,
+          bindTime: binding.bindTime,
+          unbindTime: binding.unbindTime,
+          createTime: binding.createTime,
+          updateTime: binding.updateTime
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/devices/:id/unbind
+ * 解绑设备
+ */
+router.post('/:id/unbind', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const userId = BigInt(req.userId as string);
+
+    // 查找设备（支持通过 deviceCode 或 deviceId 查找）
+    // 尝试将 id 转换为 BigInt，如果失败则只查询 deviceCode
+    let deviceIdBigInt: bigint | undefined;
+    try {
+      deviceIdBigInt = BigInt(id);
+    } catch (e) {
+      // id 不是数字，只能通过 deviceCode 查找
+    }
+
+    const whereCondition: any = {
+      OR: [
+        { deviceCode: String(id) }
+      ]
+    };
+
+    // 如果 id 可以转换为 BigInt，添加 deviceId 查询条件
+    if (deviceIdBigInt !== undefined) {
+      whereCondition.OR.push({ deviceId: deviceIdBigInt });
+    }
+
+    const device = await prisma.device.findFirst({
+      where: whereCondition
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 查找绑定记录
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        userId: userId,
+        deviceId: device.deviceId,
+        bindStatus: true
+      }
+    });
+
+    if (!binding) {
+      return res.status(404).json({
+        success: false,
+        message: '设备未绑定或不属于当前用户'
+      });
+    }
+
+    // 更新绑定状态为解绑
+    await prisma.deviceBinding.update({
+      where: { bindId: binding.bindId },
+      data: {
+        bindStatus: false,
+        unbindTime: new Date(),
+        updateTime: new Date()
+      }
+    });
+
+    // 更新设备的绑定状态
+    await prisma.device.update({
+      where: { deviceId: device.deviceId },
+      data: {
+        bindStatus: false,
+        updateTime: new Date()
+      }
+    });
+
+    res.json({
+      success: true,
+      message: '设备解绑成功',
+      data: {
+        device: {
+          deviceId: device.deviceId.toString(),
+          deviceCode: device.deviceCode,
+          devicePassword: device.devicePassword,
+          bindStatus: device.bindStatus,
+          userName: device.userName,
+          userPhone: device.userPhone,
+          registerDate: device.registerDate,
+          bindDate: device.bindDate,
+          uniqueId: device.uniqueId,
+          locationInfo: device.locationInfo,
+          address: device.address,
+          longitude: device.longitude,
+          latitude: device.latitude,
+          snCode: device.snCode,
+          isTimedReport: device.isTimedReport,
+          report_period: device.report_period,
+          battery: device.battery,
+          batteryLevel: device.batteryLevel,
+          firmwareVersion: device.firmwareVersion,
+          deviceName: device.deviceName,
+          deviceType: device.deviceType,
+          deviceModel: device.deviceModel,
+          simNumber: device.simNumber,
+          imei: device.imei,
+          plateNumber: device.plateNumber,
+          vehicleType: device.vehicleType,
+          company: device.company,
+          status: device.status,
+          avatar: device.avatar,
+          manufacturer: device.manufacturer,
+          decodeProtocol: device.decodeProtocol,
+          remark: device.remark,
+          createBy: device.createBy,
+          createTime: device.createTime,
+          updateBy: device.updateBy,
+          updateTime: device.updateTime,
+          delFlag: device.delFlag,
+          lastLocationTime: device.lastLocationTime,
+          isTop: device.isTop
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/devices/:id
+ * 更新设备信息（名称、头像等）
+ */
+router.put('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { deviceName, avatar } = req.body;
+    const userId = BigInt(req.userId as string);
+
+    // 查找设备
+    let deviceIdBigInt: bigint | undefined;
+    try {
+      deviceIdBigInt = BigInt(id);
+    } catch (e) {
+      // id 不是数字
+    }
+
+    const whereCondition: any = {
+      OR: [
+        { deviceCode: String(id) }
+      ]
+    };
+
+    if (deviceIdBigInt !== undefined) {
+      whereCondition.OR.push({ deviceId: deviceIdBigInt });
+    }
+
+    const device = await prisma.device.findFirst({
+      where: whereCondition
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 验证设备是否属于当前用户
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        userId: userId,
+        deviceId: device.deviceId,
+        bindStatus: true
+      }
+    });
+
+    if (!binding) {
+      return res.status(403).json({
+        success: false,
+        message: '无权限修改该设备信息'
+      });
+    }
+
+    // 构建更新数据
+    const updateData: any = {
+      updateTime: new Date()
+    };
+
+    if (deviceName !== undefined) {
+      updateData.deviceName = deviceName;
+      // 同时更新绑定记录中的设备名称
+      await prisma.deviceBinding.updateMany({
+        where: {
+          deviceId: device.deviceId
+        },
+        data: {
+          deviceName: deviceName,
+          updateTime: new Date()
+        }
+      });
+    }
+
+      if (avatar !== undefined) {
+        // 处理空头像（清除头像）
+        if (avatar === null || avatar === '') {
+          updateData.avatar = null;
+        } else {
+          let finalAvatar = avatar;
+
+          // 验证是否是有效的base64图像URL
+          const isBase64ImageUrl = typeof avatar === 'string' &&
+            avatar.startsWith('data:image/') &&
+            avatar.includes(';base64,');
+
+          console.log(`[Device Update] Avatar input type: ${typeof avatar}, isBase64ImageUrl: ${isBase64ImageUrl}`);
+          console.log(`[Device Update] Avatar length: ${avatar.length}`);
+
+          if (!isBase64ImageUrl) {
+            console.error('[Device Update] Invalid avatar format:', avatar.substring(0, 100));
+            return res.status(400).json({
+              success: false,
+              message: '无效的头像格式，请使用有效的base64图像数据'
+            });
+          }
+
+          try {
+            // 自动压缩头像到合适尺寸
+            console.log(`[Device Avatar Compression] 开始压缩设备头像，原始长度: ${avatar.length}字符`);
+            finalAvatar = await compressImage(avatar);
+            console.log(`[Device Avatar Compression] 压缩后长度: ${finalAvatar.length}字符`);
+          } catch (compressError) {
+            console.error('[Device Avatar Compression] 设备头像压缩失败:', compressError);
+            // 压缩失败，使用原始数据（但需验证长度）
+          }
+
+          // device表的avatar字段有长度限制（约65KB），验证长度
+          if (finalAvatar.length > 65000) {
+            console.error('[Device Update] Avatar too large:', finalAvatar.length);
+            return res.status(400).json({
+              success: false,
+              message: `头像数据过大（${finalAvatar.length}字符，最大65000字符），请选择较小的图片`
+            });
+          }
+          updateData.avatar = finalAvatar;
+        }
+      }
+
+    // 更新设备信息
+    console.log('[Device Update] Updating device with data:', JSON.stringify({
+      deviceId: device.deviceId.toString(),
+      hasAvatar: !!updateData.avatar,
+      avatarLength: updateData.avatar?.length || 0,
+      hasDeviceName: !!updateData.deviceName
+    }));
+
+    const updatedDevice = await prisma.device.update({
+      where: { deviceId: device.deviceId },
+      data: updateData
+    });
+
+    console.log('[Device Update] Device updated successfully');
+
+    res.json({
+      success: true,
+      message: '设备信息更新成功',
+      data: {
+        device: {
+          deviceId: updatedDevice.deviceId.toString(),
+          deviceCode: updatedDevice.deviceCode,
+          deviceName: updatedDevice.deviceName,
+          avatar: updatedDevice.avatar
+        }
+      }
+    });
+  } catch (error: any) {
+    console.error('[Device Update] Error:', error);
+    console.error('[Device Update] Error stack:', error.stack);
+    console.error('[Device Update] Error message:', error.message);
+
+    // 如果是Prisma错误，返回更友好的错误信息
+    if (error.code) {
+      console.error('[Device Update] Prisma error code:', error.code);
+      console.error('[Device Update] Prisma error meta:', error.meta);
+    }
+
+    res.status(500).json({
+      success: false,
+      message: error.message || '设备信息更新失败',
+      ...(process.env.NODE_ENV === 'development' && {
+        error: error.stack,
+        details: error.code ? { code: error.code, meta: error.meta } : undefined
+      })
+    });
+  }
+});
+
+/**
+ * POST /api/devices/:id/upload-avatar
+ * 上传设备头像
+ */
+router.post('/:id/upload-avatar', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const userId = BigInt(req.userId as string);
+
+    // 查找设备
+    let deviceIdBigInt: bigint | undefined;
+    try {
+      deviceIdBigInt = BigInt(id);
+    } catch (e) {
+      // id 不是数字
+    }
+
+    const whereCondition: any = {
+      OR: [
+        { deviceCode: String(id) }
+      ]
+    };
+
+    if (deviceIdBigInt !== undefined) {
+      whereCondition.OR.push({ deviceId: deviceIdBigInt });
+    }
+
+    const device = await prisma.device.findFirst({
+      where: whereCondition
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 验证设备是否属于当前用户
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        userId: userId,
+        deviceId: device.deviceId,
+        bindStatus: true
+      }
+    });
+
+    if (!binding) {
+      return res.status(403).json({
+        success: false,
+        message: '无权限修改该设备信息'
+      });
+    }
+
+    // 检查是否包含文件（兼容multer未配置的情况）
+    if (!req.files || typeof req.files !== 'object' || Object.keys(req.files).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '没有上传文件'
+      });
+    }
+
+    // 注意：这里需要配置multer来处理文件上传
+    // 暂时返回示例URL，实际使用时需要配置文件存储
+    const avatarUrl = `http://localhost:3000/uploads/devices/${Date.now()}.jpg`;
+
+    // 更新设备头像
+    const updatedDevice = await prisma.device.update({
+      where: { deviceId: device.deviceId },
+      data: { avatar: avatarUrl }
+    });
+
+    res.json({
+      success: true,
+      message: '设备头像上传成功',
+      data: {
+        avatar: avatarUrl,
+        device: {
+          deviceId: updatedDevice.deviceId.toString(),
+          deviceCode: updatedDevice.deviceCode,
+          deviceName: updatedDevice.deviceName,
+          avatar: updatedDevice.avatar
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;

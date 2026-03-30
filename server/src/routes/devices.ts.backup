@@ -1,0 +1,770 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import mysql from 'mysql2/promise';
+import prisma from '../lib/prisma';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const router = Router();
+
+// 硬编码确保一致
+const JWT_SECRET: jwt.Secret = 'your-super-secret-jwt-key';
+
+// 创建数据库连接
+const createConnection = async () => {
+  return await mysql.createConnection({
+    host: '116.204.117.57',
+    port: 3307,
+    user: 'root',
+    password: 'StrongPass!',
+    database: 'starby-dev'
+  });
+};
+
+// JWT 认证中间件 - 硬编码秘钥保证一致
+const authenticate = (req: Request, res: Response, next: NextFunction) => {
+  const JWT_SECRET = 'your-super-secret-jwt-key';
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({
+      success: false,
+      message: '未提供认证令牌'
+    });
+  }
+
+  const token = authHeader.substring(7);
+  try {
+    const JWT_SECRET = 'your-super-secret-jwt-key';
+    console.log('[DEBUG authenticate] JWT_SECRET =', JSON.stringify(JWT_SECRET), 'length =', JWT_SECRET.length);
+    console.log('[DEBUG authenticate] Token =', token.substring(0, 60) + '...');
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    req.userId = decoded.userId;
+    next();
+  } catch (error) {
+    console.log('[DEBUG authenticate] VERIFY FAILED:', error);
+    return res.status(401).json({
+      success: false,
+      message: '无效的认证令牌'
+    });
+  }
+};
+
+/**
+ * GET /api/devices
+ * 获取设备列表
+ */
+router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    console.log('[GET /api/devices] userId:', req.userId);
+    const connection = await createConnection();
+
+    try {
+      // 通过绑定表查询用户的设备（正确的关联方式）
+      const bindings = await connection.execute(
+        `SELECT
+          device_id,
+          device_no,
+          device_name,
+          bind_status,
+          bind_time
+        FROM lot_user_device_bind
+        WHERE user_id = ? AND bind_status = 1
+        ORDER BY bind_time DESC`,
+        [req.userId]
+      );
+
+      const bindingRows = (bindings as any)[0] as any[];
+
+      if (bindingRows.length === 0) {
+        return res.json({
+          success: true,
+          data: {
+            devices: []
+          }
+        });
+      }
+
+      // 获取设备详情
+      const deviceIds = bindingRows.map((b: any) => b.device_id);
+      const deviceRows = await connection.execute(
+        `SELECT
+          device_id,
+          device_code,
+          device_name,
+          latitude,
+          longitude,
+          address,
+          battery,
+          status,
+          avatar,
+          last_location_time,
+          create_time
+        FROM lot_device
+        WHERE device_id IN (${deviceIds.join(',')}) AND del_flag = '0'
+        ORDER BY create_time DESC`
+      );
+
+      const deviceRows = (deviceRows as any)[0] as any[];
+
+      console.log('[GET /api/devices] Found devices:', deviceRows.length);
+
+      res.json({
+        success: true,
+        data: {
+          devices: deviceRows.map((device: any) => ({
+            id: device.device_id.toString(),
+            name: device.device_name || '未命名设备',
+            avatar: device.avatar,
+            deviceCode: device.device_code || '',
+            latitude: device.latitude,
+            longitude: device.longitude,
+            address: device.address,
+            battery: device.battery,
+            status: device.status === '1',
+            lastUpdate: device.last_location_time,
+            ownerId: req.userId,
+            bindTime: bindingRows.find((b: any) => b.device_id === device.device_id)?.bind_time || device.create_time,
+            isShared: false,
+            ip: null,
+            port: null
+          }))
+        }
+      });
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/devices/unbound
+ * 获取可绑定的JT808设备（userId为null的设备）
+ */
+router.get('/unbound', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // 查询未被绑定的设备
+    const boundDeviceIds = (await prisma.deviceBinding.findMany({
+      select: { deviceId: true }
+    })).map(b => b.deviceId);
+
+    const devices = await prisma.device.findMany({
+      where: {
+        id: { notIn: boundDeviceIds }
+      },
+      orderBy: { createTime: 'desc' }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        devices: devices.map(device => ({
+          id: device.deviceId,
+          name: device.deviceName || '未命名设备',
+          avatar: null,
+          deviceCode: device.deviceCode || device.snCode || '',
+          latitude: device.latitude,
+          longitude: device.longitude,
+          address: null,
+          battery: null,
+          status: device.status || false,
+          lastUpdate: device.lastLocationTime,
+          ownerId: null,
+          bindTime: device.createTime,
+          isShared: false,
+          ip: null,
+          port: null
+        }))
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/devices
+ * 创建设备
+ */
+router.post('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { deviceSn, name } = req.body;
+
+    if (!deviceSn) {
+      return res.status(400).json({
+        success: false,
+        message: '设备序列号不能为空'
+      });
+    }
+
+    // 检查设备是否已存在
+    const existingDevice = await prisma.device.findUnique({
+      where: { deviceSn }
+    });
+
+    if (existingDevice) {
+      return res.status(400).json({
+        success: false,
+        message: '该设备已被绑定'
+      });
+    }
+
+    // 创建设备
+    const device = await prisma.device.create({
+      data: {
+        deviceSn,
+        name: name || '未命名设备'
+      }
+    });
+
+    // 创建设备绑定关系
+    await prisma.deviceBinding.create({
+      data: {
+        userId: BigInt(req.userId!),
+        deviceId: device.deviceId,
+        deviceNo: device.deviceCode
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: '设备创建成功',
+      data: { device }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/devices/bind
+ * 通过设备号和密码绑定设备
+ */
+router.post('/bind', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { deviceNo, name } = req.body;
+
+    if (!deviceNo || !name) {
+      return res.status(400).json({
+        success: false,
+        message: '设备号和名称不能为空'
+      });
+    }
+
+    const connection = await createConnection();
+
+    try {
+      // 开始事务
+      await connection.beginTransaction();
+
+      try {
+        // 查找设备
+        const [devices, _] = await connection.execute(
+          'SELECT device_id, device_code, device_name FROM lot_device WHERE device_code = ? AND del_flag = "0"',
+          [deviceNo]
+        );
+
+        if (devices.length === 0) {
+          await connection.rollback();
+          return res.status(404).json({
+            success: false,
+            message: '设备不存在'
+          });
+        }
+
+        const device = (devices as any[])[0];
+
+        // 检查设备是否已被绑定
+        const [existingBindings, _] = await connection.execute(
+          'SELECT bind_id FROM lot_user_device_bind WHERE device_id = ? AND bind_status = 1',
+          [device.device_id]
+        );
+
+        if (existingBindings.length > 0) {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            message: '该设备已被绑定'
+          });
+        }
+
+        // 创建绑定关系
+        const [result, _] = await connection.execute(
+          `INSERT INTO lot_user_device_bind (user_id, device_id, device_no, device_name, bind_status, bind_time, create_time)
+           VALUES (?, ?, ?, ?, 1, NOW(), NOW())`,
+          [req.userId, device.device_id, deviceNo, name.trim()]
+        );
+
+        // 更新设备信息
+        await connection.execute(
+          `UPDATE lot_device
+           SET device_name = ?, bind_status = 1, bind_date = NOW(), update_time = NOW()
+           WHERE device_id = ?`,
+          [name.trim(), device.device_id]
+        );
+
+        // 提交事务
+        await connection.commit();
+
+        res.json({
+          success: true,
+          message: '设备绑定成功',
+          data: {
+            bindId: (result as any).insertId,
+            deviceId: device.device_id,
+            deviceName: name.trim()
+          }
+        });
+      } catch (error) {
+        // 发生错误时回滚事务
+        await connection.rollback();
+        throw error;
+      }
+    } finally {
+      await connection.end();
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/devices/:id
+ * 获取单个设备详情
+ */
+router.get('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    // 验证设备是否属于当前用户，并且绑定状态为1（已绑定）
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        deviceId: BigInt(id),
+        userId: BigInt(req.userId!),
+        bindStatus: true
+      }
+    });
+
+    if (!binding) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    const device = await prisma.device.findUnique({
+      where: { deviceId: BigInt(id) }
+    });
+
+    res.json({
+      success: true,
+      data: { device }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/devices/:id/location
+ * 获取设备实时位置
+ */
+router.get('/:id/location', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    // 验证设备是否属于当前用户
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        deviceId: id,
+        userId: BigInt(req.userId!)
+      }
+    });
+
+    if (!binding) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 查询最新的位置
+    const location = await prisma.location.findFirst({
+      where: { deviceId: id },
+      orderBy: { location_time: 'desc' }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        deviceId: id,
+        location
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/devices/:id/history
+ * 获取设备历史轨迹
+ */
+router.get('/:id/history', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { startTime, endTime, limit = 100 } = req.query;
+
+    // 验证设备是否属于当前用户
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        deviceId: id,
+        userId: BigInt(req.userId!)
+      }
+    });
+
+    if (!binding) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 构建查询条件
+    const where: any = { deviceId: id };
+    if (startTime || endTime) {
+      where.trackTime = {};
+      if (startTime) {
+        where.trackTime.gte = new Date(startTime as string);
+      }
+      if (endTime) {
+        where.trackTime.lte = new Date(endTime as string);
+      }
+    }
+
+    // 查询历史位置
+    const history = await prisma.location.findMany({
+      where,
+      orderBy: { location_time: 'desc' },
+      take: Math.min(Number(limit), 1000)
+    });
+
+    res.json({
+      success: true,
+      data: {
+        deviceId: id,
+        history
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/devices/:id/location
+ * 上报设备位置
+ */
+router.post('/:id/location', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { latitude, longitude, accuracy } = req.body;
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: '纬度和经度不能为空'
+      });
+    }
+
+    // 验证设备是否存在
+    const device = await prisma.device.findUnique({
+      where: { id }
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 创建位置记录
+    const location = await prisma.location.create({
+      data: {
+        deviceId: id,
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+        accuracy: accuracy ? Number(accuracy) : null
+      }
+    });
+
+    // 更新设备状态为在线
+    await prisma.device.update({
+      where: { id },
+      data: { status: 'online' }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: '位置上报成功',
+      data: { location }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/devices/:id
+ * 更新设备信息
+ */
+router.put('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: '设备名称不能为空'
+      });
+    }
+
+    // 验证设备是否属于当前用户
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        deviceId: id,
+        userId: BigInt(req.userId!)
+      }
+    });
+
+    if (!binding) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 更新设备信息
+    const updatedDevice = await prisma.device.update({
+      where: { id },
+      data: { name: name.trim() }
+    });
+
+    res.json({
+      success: true,
+      message: '设备信息已更新',
+      data: { device: updatedDevice }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/devices/:id/bind
+ * 绑定JT808设备到当前用户
+ */
+router.post('/:id/bind', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    // 查找设备
+    const device = await prisma.device.findFirst({
+      where: {
+        OR: [
+          { deviceCode: id },
+          { deviceCode: id },
+          { snCode: id },
+          { id: id }
+        ]
+      }
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在'
+      });
+    }
+
+    // 检查设备是否已被绑定
+    const existingBinding = await prisma.deviceBinding.findFirst({
+      where: { deviceId: device.deviceId,
+        deviceNo: device.deviceCode }
+    });
+
+    if (existingBinding) {
+      // 如果已被当前用户绑定，返回成功
+      if (existingBinding.userId.toString() === req.userId!) {
+        return res.json({
+          success: true,
+          message: '设备已绑定',
+          data: { device }
+        });
+      }
+
+      // 如果已被其他用户绑定，返回错误
+      return res.status(400).json({
+        success: false,
+        message: '该设备已被其他用户绑定'
+      });
+    }
+
+    // 绑定设备
+    await prisma.deviceBinding.create({
+      data: {
+        userId: BigInt(req.userId!),
+        deviceId: device.deviceId,
+        deviceNo: device.deviceCode
+      }
+    });
+
+    res.json({
+      success: true,
+      message: '设备绑定成功',
+      data: { device }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/devices/:id/unbind
+ * 解绑设备
+ */
+router.post('/:id/unbind', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    // 验证设备是否属于当前用户
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        deviceId: id,
+        userId: BigInt(req.userId!)
+      }
+    });
+
+    if (!binding) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在或无权操作'
+      });
+    }
+
+    // 删除绑定关系
+    await prisma.deviceBinding.delete({
+      where: { deviceId: binding.id }
+    });
+
+    res.json({
+      success: true,
+      message: '设备解绑成功',
+      data: { success: true }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/devices/:id/name
+ * 修改设备名称
+ */
+router.put('/:id/name', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    // 验证设备是否属于当前用户
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        deviceId: id,
+        userId: BigInt(req.userId!)
+      }
+    });
+
+    if (!binding) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在或无权操作'
+      });
+    }
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: '设备名称不能为空'
+      });
+    }
+
+    // 更新设备名称
+    const updatedDevice = await prisma.device.update({
+      where: { id },
+      data: { name: name.trim() }
+    });
+
+    res.json({
+      success: true,
+      message: '设备名称修改成功',
+      data: { device: updatedDevice }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/devices/:id/password
+ * 修改设备密码
+ */
+router.put('/:id/password', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { oldPassword, newPassword } = req.body;
+
+    // 验证参数
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: '旧密码和新密码不能为空'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: '新密码长度不能少于6位'
+      });
+    }
+
+    // 验证设备是否属于当前用户
+    const binding = await prisma.deviceBinding.findFirst({
+      where: {
+        deviceId: id,
+        userId: BigInt(req.userId!)
+      }
+    });
+
+    if (!binding) {
+      return res.status(404).json({
+        success: false,
+        message: '设备不存在或无权操作'
+      });
+    }
+
+    // 这个接口暂时不需要，因为Device表没有password字段
+    return res.status(501).json({
+      success: false,
+      message: '功能未实现'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
