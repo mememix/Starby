@@ -2,7 +2,6 @@
 // 腾讯云短信发送工具类
 
 const TencentCloudSDK = require('tencentcloud-sdk-nodejs');
-const crypto = require('crypto');
 
 // 导入短信客户端
 const smsClient = TencentCloudSDK.sms.v20210111.Client;
@@ -82,6 +81,36 @@ async function sendVerificationCode(phone: string, code: string): Promise<{
     // 发送短信
     const response = await client.SendSms(params);
 
+    // 检查发送结果
+    const sendStatus = response.SendStatusSet && response.SendStatusSet[0];
+
+    if (sendStatus && sendStatus.Code !== 'Ok') {
+      console.error('[SMS Service] 发送失败:', {
+        Code: sendStatus.Code,
+        Message: sendStatus.Message,
+        PhoneNumber: sendStatus.PhoneNumber
+      });
+
+      // 根据错误码返回更详细的错误信息
+      let errorMessage = '验证码发送失败，请稍后重试';
+      if (sendStatus.Code === 'LimitExceeded.PhoneNumberDailyLimit') {
+        errorMessage = '该手机号今日发送次数已达上限，请明天再试';
+      } else if (sendStatus.Code === 'LimitExceeded.PhoneNumberOneHourLimit') {
+        errorMessage = '该手机号1小时内发送次数已达上限，请稍后再试';
+      } else if (sendStatus.Code === 'LimitExceeded.PhoneNumberFiveMinuteLimit') {
+        errorMessage = '该手机号5分钟内发送次数已达上限，请稍后再试';
+      } else if (sendStatus.Code === 'SignatureNotExistOrIllegal') {
+        errorMessage = '短信签名不存在或不合法，请联系管理员';
+      } else if (sendStatus.Code === 'TemplateNotExistOrIllegal') {
+        errorMessage = '短信模板不存在或不合法，请联系管理员';
+      }
+
+      return {
+        success: false,
+        message: errorMessage
+      };
+    }
+
     console.log('[SMS Service] 发送成功:', response);
 
     return {
@@ -89,7 +118,7 @@ async function sendVerificationCode(phone: string, code: string): Promise<{
       message: '验证码已发送'
     };
   } catch (error) {
-    console.error('[SMS Service] 发送失败:', error);
+    console.error('[SMS Service] 发送异常:', error);
     return {
       success: false,
       message: '验证码发送失败，请稍后重试'

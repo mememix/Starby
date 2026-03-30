@@ -3,6 +3,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../../constants/colors.dart';
 import '../../routes.dart';
 import '../../services/storage_service.dart';
@@ -428,10 +429,12 @@ class _PhoneCodeLoginScreenState extends State<PhoneCodeLoginScreen> {
         deviceType: deviceType,
       );
 
+      print('[Login] 响应数据: $response');
+
       if (response['success'] == true) {
         final data = response['data'];
         final token = data['token'];
-        
+
         if (token == null || token.isEmpty) {
           throw Exception('登录成功但未获取到token');
         }
@@ -450,16 +453,75 @@ class _PhoneCodeLoginScreenState extends State<PhoneCodeLoginScreen> {
           );
         }
       } else {
+        // 登录失败（后端返回 success: false）
+        final message = response['message'] ?? '登录失败';
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(response['message'] ?? '登录失败')),
+            SnackBar(content: Text(message)),
           );
         }
       }
     } catch (e) {
+      print('[Login] 登录异常类型: ${e.runtimeType}');
+      print('[Login] 登录异常内容: $e');
+
+      // 捕获 Dio 错误或其他异常
+      String errorMsg = '登录失败';
+
+      // 尝试从 DioError 中获取响应数据
+      if (e is DioException) {
+        print('[Login] DioError response: ${(e as DioException).response}');
+        print('[Login] DioError response data: ${(e as DioException).response?.data}');
+        print('[Login] DioError type: ${(e as DioException).type}');
+        print('[Login] DioError message: ${(e as DioException).message}');
+
+        // 如果有响应数据,尝试解析错误信息
+        if ((e as DioException).response != null &&
+            (e as DioException).response!.data is Map) {
+          final responseData = (e as DioException).response!.data as Map<String, dynamic>;
+          if (responseData.containsKey('message')) {
+            errorMsg = responseData['message'];
+          } else if (responseData.containsKey('error')) {
+            errorMsg = responseData['error'];
+          }
+        } else {
+          // 根据错误类型显示不同的错误信息
+          switch ((e as DioException).type) {
+            case DioExceptionType.connectionTimeout:
+              errorMsg = '连接超时,请检查网络';
+              break;
+            case DioExceptionType.sendTimeout:
+              errorMsg = '发送请求超时';
+              break;
+            case DioExceptionType.receiveTimeout:
+              errorMsg = '接收响应超时';
+              break;
+            case DioExceptionType.badResponse:
+              errorMsg = (e as DioException).message ?? '服务器错误';
+              break;
+            case DioExceptionType.cancel:
+              errorMsg = '请求已取消';
+              break;
+            case DioExceptionType.connectionError:
+              errorMsg = '网络连接失败,请检查网络';
+              break;
+            default:
+              errorMsg = '未知错误: ${(e as DioException).message}';
+          }
+        }
+      } else if (e.toString().contains('404')) {
+        errorMsg = '接口不存在，请检查服务器配置';
+      } else if (e.toString().contains('400')) {
+        errorMsg = '请求参数错误';
+      } else if (e.toString().contains('500')) {
+        errorMsg = '服务器错误，请稍后重试';
+      } else if (e.toString().contains('401')) {
+        errorMsg = '认证失败，请检查验证码';
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('登录失败: $e')),
+          SnackBar(content: Text(errorMsg)),
         );
       }
     } finally {

@@ -34,6 +34,11 @@ class ApiService {
       headers: {
         'Content-Type': 'application/json',
       },
+      validateStatus: (status) {
+        // 允许所有 200-599 的状态码，不抛出异常
+        // 让业务代码根据 response.data 来判断成功或失败
+        return status != null && status >= 200 && status < 600;
+      },
     ));
 
     // 添加拦截器，每次请求自动添加token
@@ -64,7 +69,14 @@ class ApiService {
       onError: (error, handler) {
         if (AppConfig.DEBUG_MODE) {
           debugPrint('[ApiService] Error: ${error.requestOptions.uri} - ${error.message}');
+          // 如果有响应数据,也打印出来
+          if (error.response != null && error.response!.data != null) {
+            debugPrint('[ApiService] Response data: ${error.response!.data}');
+          }
         }
+
+        // 检查是否有响应数据,如果有,则将响应数据附加到错误对象
+        // 这样调用方可以从 error.response.data 中获取后端返回的错误信息
         return handler.next(error);
       },
     ));

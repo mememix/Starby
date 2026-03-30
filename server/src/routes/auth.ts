@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
 import dotenv from 'dotenv';
 import { compressImage } from '../utils/imageCompressor';
+import { sendLoginCode, verifyLoginCode } from '../utils/smsService';
 
 // 扩展 Request 类型以添加 userId 属性
 declare module 'express' {
@@ -354,12 +355,11 @@ router.post('/send-code', async (req: Request, res: Response, next: NextFunction
 
     const isRegistered = existingUser && existingUser.length > 0;
 
-    // 生成6位验证码
-    const { sendLoginCode, verifyLoginCode } = await import('../utils/smsService');
+    // 发送验证码
     const codeResult = await sendLoginCode(phone);
-    
+
     if (!codeResult.success) {
-      return res.status(500).json({
+      return res.status(400).json({
         success: false,
         message: codeResult.message || '发送验证码失败'
       });
@@ -433,7 +433,6 @@ router.post('/verify-login', async (req: Request, res: Response, next: NextFunct
     const user = users[0];
 
     // 验证验证码
-    const { verifyLoginCode } = await import('../utils/smsService');
     const isCodeValid = verifyLoginCode(phone, code);
 
     if (!isCodeValid) {
@@ -528,7 +527,6 @@ router.post('/verify-register', async (req: Request, res: Response, next: NextFu
     }
 
     // 验证验证码
-    const { verifyLoginCode } = await import('../utils/smsService');
     const isCodeValid = verifyLoginCode(phone, code);
 
     if (!isCodeValid) {
