@@ -1,4 +1,4 @@
-# Starby - GPS定位追踪设备管理平台
+# Starby - 定位追踪设备管理平台
 
 ## 项目简介
 
@@ -389,8 +389,8 @@ flutter build ios --release
 
 - 项目名称: Starby
 - 开发团队: 星护科技
-- 技术支持: tech@starby.cn
+- 技术支持: xt@starby.cn
 
 ## 许可证
 
-Copyright © 2024 Starby. All rights reserved.
+Copyright © 2026 Starby. All rights reserved.
