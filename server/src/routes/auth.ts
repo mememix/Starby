@@ -107,47 +107,97 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     let user;
 
     if (phone) {
-      // 手机号登录 - 使用 lot_user 表的 phone_number 字段
-      user = await prisma.$queryRaw`
-        SELECT user_id, phone_number, nickname, password, avatar_url
-        FROM lot_user
-        WHERE phone_number = ${phone}
-        AND del_flag = '0'
-      ` as any[];
+      // 判断是管理后台登录还是移动端登录
+      // 如果是 admin 或其他管理员账号，查询 sys_user 表
+      if (phone === 'admin' || phone.length <= 10) {
+        // 管理后台登录 - 使用 sys_user 表
+        user = await prisma.$queryRaw`
+          SELECT user_id, user_name, nick_name, phonenumber, password, avatar
+          FROM sys_user
+          WHERE (user_name = ${phone} OR phonenumber = ${phone})
+          AND del_flag = '0'
+        ` as any[];
 
-      if (!user || user.length === 0) {
-        return res.status(401).json({
-          success: false,
-          message: '用户不存在'
-        });
-      }
-
-      user = user[0];
-
-      // 尝试密码验证（支持 MD5 和 bcrypt）
-      let passwordValid = false;
-      
-      // 先尝试 MD5 比对
-      const md5Hash = require('crypto').createHash('md5').update(password).digest('hex');
-      if (user.password === md5Hash) {
-        passwordValid = true;
-      } else if (user.password === password) {
-        // 明文密码比对
-        passwordValid = true;
-      } else if (user.password && user.password.length > 20) {
-        // bcrypt 比对
-        try {
-          passwordValid = await bcrypt.compare(password, user.password);
-        } catch (error) {
-          // bcrypt 比对失败，保持 false
+        if (!user || user.length === 0) {
+          return res.status(401).json({
+            success: false,
+            message: '用户不存在'
+          });
         }
-      }
 
-      if (!passwordValid) {
-        return res.status(401).json({
-          success: false,
-          message: '密码错误'
-        });
+        user = user[0];
+
+        // 管理后台密码验证（支持明文、MD5、bcrypt）
+        if (!user.password) {
+          return res.status(401).json({
+            success: false,
+            message: '密码未设置'
+          });
+        }
+
+        let passwordValid = false;
+        
+        // 先尝试明文密码比对（admin 用户是明文）
+        if (user.password === password) {
+          passwordValid = true;
+        } else if (user.password.length > 20) {
+          // bcrypt 比对（若依框架加密方式）
+          try {
+            passwordValid = await bcrypt.compare(password, user.password);
+          } catch (error) {
+            // bcrypt 比对失败，保持 false
+          }
+        }
+
+        if (!passwordValid) {
+          return res.status(401).json({
+            success: false,
+            message: '密码错误'
+          });
+        }
+      } else {
+        // 移动端登录 - 使用 lot_user 表
+        user = await prisma.$queryRaw`
+          SELECT user_id, phone_number, nickname, password, avatar_url
+          FROM lot_user
+          WHERE phone_number = ${phone}
+          AND del_flag = '0'
+        ` as any[];
+
+        if (!user || user.length === 0) {
+          return res.status(401).json({
+            success: false,
+            message: '用户不存在'
+          });
+        }
+
+        user = user[0];
+
+        // 尝试密码验证（支持 MD5 和 bcrypt）
+        let passwordValid = false;
+        
+        // 先尝试 MD5 比对
+        const md5Hash = require('crypto').createHash('md5').update(password).digest('hex');
+        if (user.password === md5Hash) {
+          passwordValid = true;
+        } else if (user.password === password) {
+          // 明文密码比对
+          passwordValid = true;
+        } else if (user.password && user.password.length > 20) {
+          // bcrypt 比对
+          try {
+            passwordValid = await bcrypt.compare(password, user.password);
+          } catch (error) {
+            // bcrypt 比对失败，保持 false
+          }
+        }
+
+        if (!passwordValid) {
+          return res.status(401).json({
+            success: false,
+            message: '密码错误'
+          });
+        }
       }
     } else if (deviceNo) {
       // 设备号登录
@@ -246,8 +296,13 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
 
     // 生成 JWT token - 硬编码秘钥保证一致
     const JWT_SECRET = 'your-super-secret-jwt-key';
+    // 兼容 sys_user 和 lot_user 表的字段差异
+    const phonenumber = user.phonenumber || user.phone_number || '';
+    const nickname = user.nick_name || user.nickname || '';
+    const avatar = user.avatar || user.avatar_url || null;
+    
     const token = jwt.sign(
-      { userId: Number(user.user_id).toString(), phonenumber: user.phone_number || '' },
+      { userId: Number(user.user_id).toString(), phonenumber },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions
     );
@@ -262,9 +317,9 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         token,
         user: {
           id: Number(user.user_id).toString(),
-          phonenumber: user.phone_number || '',
-          nickname: user.nickname || '',
-          avatar: user.avatar_url || null
+          phonenumber,
+          nickname,
+          avatar
         }
       }
     });

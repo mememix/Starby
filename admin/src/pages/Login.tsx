@@ -15,7 +15,10 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      const response = await api.post('/auth/login', values);
+      const response = await api.post('/auth/login', {
+        phone: values.phone,
+        password: values.password
+      });
       if (response.success) {
         localStorage.setItem('token', response.data.token);
         navigate('/');
@@ -53,11 +56,11 @@ export default function Login() {
         >
           <Form.Item
             name="phone"
-            rules={[{ required: true, message: '请输入手机号' }]}
+            rules={[{ required: true, message: '请输入用户名' }]}
           >
             <Input 
               prefix={<UserOutlined />} 
-              placeholder="手机号" 
+              placeholder="用户名" 
               size="large"
             />
           </Form.Item>

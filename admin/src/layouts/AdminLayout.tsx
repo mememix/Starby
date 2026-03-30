@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Layout, Menu, Typography, Button, Avatar, Dropdown } from 'antd';
-import { 
-  DashboardOutlined, 
-  UserOutlined, 
-  SettingOutlined, 
-  DeviceOutlined,
-  LogoutOutlined 
+import {
+  DashboardOutlined,
+  UserOutlined,
+  SettingOutlined,
+  MobileOutlined,
+  LogoutOutlined
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 
@@ -14,8 +14,22 @@ const { Title } = Typography;
 
 export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+      if (window.innerWidth < 768) {
+        setCollapsed(true);
+      }
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -35,7 +49,7 @@ export default function AdminLayout() {
     },
     {
       key: '/devices',
-      icon: <DeviceOutlined />,
+      icon: <MobileOutlined />,
       label: '设备管理'
     },
     {
@@ -64,16 +78,18 @@ export default function AdminLayout() {
   }, [navigate]);
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider 
-        collapsible 
-        collapsed={collapsed} 
+    <Layout style={{ minHeight: '100vh', width: '100%', maxWidth: '100%' }}>
+      <Sider
+        collapsible
+        collapsed={collapsed}
         onCollapse={setCollapsed}
+        breakpoint="lg"
+        collapsedWidth={isMobile ? 0 : 80}
       >
-        <div style={{ 
-          height: 64, 
-          display: 'flex', 
-          alignItems: 'center', 
+        <div style={{
+          height: 64,
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'center',
           background: '#001529'
         }}>
@@ -89,25 +105,26 @@ export default function AdminLayout() {
           onClick={({ key }) => navigate(key)}
         />
       </Sider>
-      <Layout>
-        <Header style={{ 
-          background: '#fff', 
+      <Layout style={{ width: '100%', maxWidth: '100%' }}>
+        <Header style={{
+          background: '#fff',
           padding: '0 24px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.1)'
+          boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
+          width: '100%'
         }}>
           <Title level={4} style={{ margin: 0 }}>
             {menuItems.find(item => item.key === location.pathname)?.label || '管理后台'}
           </Title>
           <Dropdown menu={userMenu}>
             <Button type="text" icon={<Avatar size="small" icon={<UserOutlined />} />}>
-              管理员
+              {!isMobile && '管理员'}
             </Button>
           </Dropdown>
         </Header>
-        <Content style={{ margin: '24px', background: '#fff', padding: 24, minHeight: 280 }}>
+        <Content style={{ margin: '24px', background: '#fff', padding: 24, minHeight: 280, width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
           <Outlet />
         </Content>
       </Layout>

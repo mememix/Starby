@@ -1,18 +1,22 @@
 import { useState, useEffect } from 'react';
 import { Table, Space, Button, Card, Tag, Modal, Form, Input, message } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import api from '../utils/api';
 
 interface User {
   id: string;
+  nickname: string;
   phone: string;
   createdAt: string;
-  deviceCount?: number;
+  deviceCount: number;
+  avatar?: string;
 }
 
 export default function Users() {
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [searchText, setSearchText] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form] = Form.useForm();
@@ -20,17 +24,13 @@ export default function Users() {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      // TODO: 从 API 获取用户列表
-      // const response = await api.get('/users');
-      // setUsers(response.data.users);
-      
-      // 模拟数据
-      setUsers([
-        { id: '1', phone: '13800138001', createdAt: '2026-03-01', deviceCount: 2 },
-        { id: '2', phone: '13800138002', createdAt: '2026-03-05', deviceCount: 1 },
-        { id: '3', phone: '13800138003', createdAt: '2026-03-10', deviceCount: 3 }
-      ]);
+      const response = await api.get('/devices/users');
+      if (response.success) {
+        setUsers(response.data.users || []);
+        setFilteredUsers(response.data.users || []);
+      }
     } catch (error) {
+      console.error('加载用户失败:', error);
       message.error('加载用户失败');
     } finally {
       setLoading(false);
@@ -41,6 +41,19 @@ export default function Users() {
     loadUsers();
   }, []);
 
+  // 搜索过滤
+  useEffect(() => {
+    const filtered = users.filter(user => {
+      const searchLower = searchText.toLowerCase();
+      return (
+        user.nickname?.toLowerCase().includes(searchLower) ||
+        user.phone?.includes(searchText) ||
+        user.id?.includes(searchText)
+      );
+    });
+    setFilteredUsers(filtered);
+  }, [searchText, users]);
+
   const handleDelete = (id: string) => {
     Modal.confirm({
       title: '确认删除',
@@ -48,7 +61,7 @@ export default function Users() {
       onOk: async () => {
         try {
           // TODO: 调用删除 API
-          message.success('删除成功');
+          message.success('删除功能开发中');
           loadUsers();
         } catch (error) {
           message.error('删除失败');
@@ -61,10 +74,10 @@ export default function Users() {
     try {
       if (editingUser) {
         // TODO: 调用更新 API
-        message.success('更新成功');
+        message.success('更新功能开发中');
       } else {
         // TODO: 调用创建 API
-        message.success('创建成功');
+        message.success('创建功能开发中');
       }
       setModalVisible(false);
       form.resetFields();
@@ -75,34 +88,43 @@ export default function Users() {
   };
 
   const columns = [
-    { title: 'ID', dataIndex: 'id', key: 'id' },
+    { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
+    { title: '昵称', dataIndex: 'nickname', key: 'nickname' },
     { title: '手机号', dataIndex: 'phone', key: 'phone' },
-    { 
-      title: '设备数', 
-      dataIndex: 'deviceCount', 
+    {
+      title: '设备数',
+      dataIndex: 'deviceCount',
       key: 'deviceCount',
+      width: 100,
       render: (count: number) => <Tag color="blue">{count}</Tag>
     },
-    { title: '注册时间', dataIndex: 'createdAt', key: 'createdAt' },
+    {
+      title: '注册时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      render: (date: string) => date ? new Date(date).toLocaleDateString('zh-CN') : '-'
+    },
     {
       title: '操作',
       key: 'action',
+      width: 180,
+      fixed: 'right' as const,
       render: (_: any, record: User) => (
         <Space size="middle">
-          <Button 
-            type="link" 
+          <Button
+            type="link"
             icon={<EditOutlined />}
             onClick={() => {
               setEditingUser(record);
-              form.setFieldsValue(record);
+              form.setFieldsValue({ phone: record.phone });
               setModalVisible(true);
             }}
           >
             编辑
           </Button>
-          <Button 
-            type="link" 
-            danger 
+          <Button
+            type="link"
+            danger
             icon={<DeleteOutlined />}
             onClick={() => handleDelete(record.id)}
           >
@@ -114,27 +136,44 @@ export default function Users() {
   ];
 
   return (
-    <Card 
+    <Card
       title="用户管理"
       extra={
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingUser(null);
-            form.resetFields();
-            setModalVisible(true);
-          }}
-        >
-          添加用户
-        </Button>
+        <Space size="middle">
+          <Input.Search
+            placeholder="搜索昵称/手机号/ID"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            allowClear
+            style={{ width: 250 }}
+            prefix={<SearchOutlined />}
+          />
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingUser(null);
+              form.resetFields();
+              setModalVisible(true);
+            }}
+          >
+            添加用户
+          </Button>
+        </Space>
       }
     >
-      <Table 
-        columns={columns} 
-        dataSource={users}
+      <Table
+        columns={columns}
+        dataSource={filteredUsers}
         loading={loading}
         rowKey="id"
+        scroll={{ x: 'max-content' }}
+        pagination={{
+          pageSize: 20,
+          showSizeChanger: true,
+          showQuickJumper: true,
+          showTotal: (total) => `共 ${total} 条`
+        }}
       />
 
       <Modal

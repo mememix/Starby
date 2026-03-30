@@ -450,13 +450,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Navigator.pushNamed(context, AppRoutes.settingsHelp);
           },
         },
-        {
-          'icon': Icons.bug_report_outlined,
-          'title': '调试信息',
-          'onTap': () {
-            Navigator.pushNamed(context, AppRoutes.debugStorage);
-          },
-        },
       ]);
     }
 

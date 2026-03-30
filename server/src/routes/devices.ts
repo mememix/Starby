@@ -41,6 +41,55 @@ const authenticate = (req: Request, res: Response, next: NextFunction) => {
 };
 
 /**
+ * GET /api/devices/stats
+ * 获取管理员统计数据（全站统计）
+ */
+router.get('/stats', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // 统计总用户数
+    const totalUsers = await prisma.$queryRaw`
+      SELECT COUNT(*) as count
+      FROM sys_user
+      WHERE del_flag = 0
+    ` as any[];
+
+    // 统计在线设备数 - 从lot_user_device_bind表统计绑定状态为1的设备
+    const onlineDevices = await prisma.$queryRaw`
+      SELECT COUNT(DISTINCT device_id) as count
+      FROM lot_user_device_bind
+      WHERE bind_status = 1
+    ` as any[];
+
+    // 统计今日活跃用户数 - 有今天登录记录的用户
+    const todayActive = await prisma.$queryRaw`
+      SELECT COUNT(DISTINCT user_id) as count
+      FROM lot_user_login_device
+      WHERE DATE(last_login_time) = CURDATE()
+    ` as any[];
+
+    // 统计正常设备数 - 设备状态正常的（排除故障、异常等）
+    const normalDevices = await prisma.$queryRaw`
+      SELECT COUNT(DISTINCT device_id) as count
+      FROM lot_user_device_bind
+      WHERE bind_status = 1
+    ` as any[];
+
+    res.json({
+      success: true,
+      data: {
+        totalUsers: Number(totalUsers[0]?.count || 0),
+        onlineDevices: Number(onlineDevices[0]?.count || 0),
+        todayActive: Number(todayActive[0]?.count || 0),
+        normalDevices: Number(normalDevices[0]?.count || 0)
+      }
+    });
+  } catch (error) {
+    console.error('[Devices] 获取统计数据失败:', error);
+    next(error);
+  }
+});
+
+/**
  * GET /api/devices
  * 获取设备列表
  */
@@ -216,6 +265,202 @@ router.get('/unbound', authenticate, async (req: Request, res: Response, next: N
       }
     });
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/devices/all
+ * 获取所有设备列表（管理员用）
+ */
+router.get('/all', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const limit = Number(req.query.limit) || 10;
+    const offset = Number(req.query.offset) || 0;
+
+    console.log('[Devices All] 开始查询设备列表，limit:', limit, 'offset:', offset);
+
+    // 获取所有绑定设备信息
+    const allBindings = await prisma.$queryRaw`
+      SELECT
+        b.device_id,
+        b.user_id,
+        b.device_name as custom_name,
+        b.bind_time
+      FROM lot_user_device_bind b
+      WHERE b.bind_status = 1
+      ORDER BY b.bind_time DESC
+    ` as any[];
+
+    console.log('[Devices All] 所有绑定记录数量（去重前）:', allBindings.length);
+
+    // 去重：每个设备只保留最新的绑定记录（按 bind_time 排序后取第一条）
+    const deviceMap = new Map();
+    for (const binding of allBindings) {
+      const deviceId = String(binding.device_id);
+      if (!deviceMap.has(deviceId)) {
+        deviceMap.set(deviceId, binding);
+      }
+    }
+
+    const bindings = Array.from(deviceMap.values()).slice(offset, offset + limit);
+
+    console.log('[Devices All] 去重后绑定记录数量:', deviceMap.size);
+    console.log('[Devices All] 返回的绑定记录（分页后）:', bindings.length);
+    console.log('[Devices All] 绑定记录:', bindings.map(b => ({
+      device_id: b.device_id,
+      user_id: b.user_id,
+      custom_name: b.custom_name
+    })));
+
+    // 获取用户信息
+    const userIds = bindings.map(b => b.user_id).filter(id => id !== null);
+    console.log('[Devices All] 需要查询的用户IDs:', userIds);
+
+    // 使用 Prisma 原生查询，避免 SQL IN 子句的问题
+    const users = await prisma.$queryRaw`
+      SELECT user_id, nickname, phone_number
+      FROM lot_user
+      WHERE del_flag = '0'
+    ` as any[];
+
+    console.log('[Devices All] 查询到的所有用户数量（未过滤）:', users.length);
+
+    // 过滤出需要的用户
+    const filteredUsers = users.filter((u: any) => userIds.includes(u.user_id));
+    console.log('[Devices All] 过滤后匹配的用户数量:', filteredUsers.length);
+    console.log('[Devices All] 过滤后的用户列表:', filteredUsers);
+
+    // 创建用户映射
+    const userMap = new Map(filteredUsers.map(u => [String(u.user_id), u]));
+
+    // 获取设备详细信息
+    const devices = await prisma.$queryRaw`
+      SELECT
+        d.device_id,
+        d.device_code,
+        d.device_name,
+        d.status,
+        d.latitude,
+        d.longitude,
+        d.address,
+        d.battery,
+        d.last_location_time,
+        d.create_time
+      FROM lot_device d
+    ` as any[];
+
+    // 创建设备详细信息映射（注意：这里不使用 deviceMap 变量名，避免重复声明）
+    const deviceInfoMap = new Map(devices.map(d => [String(d.device_id), d]));
+
+    // 合并数据
+    const result = bindings.map((binding: any) => {
+      const device = deviceInfoMap.get(String(binding.device_id));
+      const user = userMap.get(String(binding.user_id));
+      const merged = {
+        id: String(binding.device_id),
+        name: binding.custom_name || device?.device_name || '未命名设备',
+        userName: user?.nickname || '未知用户',
+        userPhone: user?.phone_number || '',
+        online: device?.status === '1',
+        lastOnline: device?.last_location_time || '未知',
+        deviceCode: device?.device_code || ''
+      };
+      console.log('[Devices All] 合并设备数据:', {
+        device_id: binding.device_id,
+        user_id: binding.user_id,
+        user_found: !!user,
+        result_userName: merged.userName
+      });
+      return merged;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        devices: result,
+        total: result.length
+      }
+    });
+  } catch (error) {
+    console.error('[Devices] 获取设备列表失败:', error);
+    next(error);
+  }
+});
+
+/**
+ * GET /api/devices/users
+ * 获取所有用户列表（管理员用）
+ */
+router.get('/users', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const limit = Number(req.query.limit) || 100;
+    const offset = Number(req.query.offset) || 0;
+
+    console.log('[Devices Users] 开始查询用户列表，limit:', limit, 'offset:', offset);
+
+    // 获取 lot_user 表用户列表（先不加 del_flag 条件，看看能查到多少）
+    const allUsers = await prisma.$queryRaw`
+      SELECT
+        u.user_id,
+        u.nickname,
+        u.phone_number,
+        u.avatar_url,
+        u.create_time,
+        u.del_flag
+      FROM lot_user u
+      ORDER BY u.user_id DESC
+      LIMIT ${limit + 50}
+      OFFSET ${offset}
+    ` as any[];
+
+    console.log('[Devices Users] lot_user 表查询到用户数量（包括已删除）:', allUsers.length);
+    console.log('[Devices Users] 所有用户列表（包括已删除）:', allUsers.map(u => ({
+      user_id: u.user_id,
+      nickname: u.nickname,
+      phone_number: u.phone_number,
+      del_flag: u.del_flag
+    })));
+
+    // 过滤掉已删除的用户（del_flag = '0' 表示未删除）
+    const users = allUsers.filter((user: any) => user.del_flag === '0' || user.del_flag === 0);
+
+    console.log('[Devices Users] 过滤后未删除用户数量:', users.length);
+
+    // 获取每个用户的设备数量
+    const userBindings = await prisma.$queryRaw`
+      SELECT
+        user_id,
+        COUNT(*) as device_count
+      FROM lot_user_device_bind
+      WHERE bind_status = 1
+      GROUP BY user_id
+    ` as any[];
+
+    console.log('[Devices Users] 设备绑定记录数量:', userBindings.length);
+
+    // 创建设备数量映射
+    const bindingMap = new Map(userBindings.map(b => [String(b.user_id), Number(b.device_count)]));
+
+    // 合并数据
+    const result = users.slice(0, limit).map((user: any) => ({
+      id: String(user.user_id),
+      nickname: user.nickname || '未命名',
+      phone: user.phone_number || '',
+      avatar: user.avatar_url,
+      createdAt: user.create_time,
+      deviceCount: bindingMap.get(String(user.user_id)) || 0
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        users: result,
+        total: result.length
+      }
+    });
+  } catch (error) {
+    console.error('[Devices] 获取用户列表失败:', error);
     next(error);
   }
 });

@@ -300,7 +300,7 @@ class _FenceEditScreenState extends State<FenceEditScreen> {
                 _alarmEnter = value;
               });
             },
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
             contentPadding: EdgeInsets.zero,
           ),
           SwitchListTile(
@@ -318,7 +318,7 @@ class _FenceEditScreenState extends State<FenceEditScreen> {
                 _alarmLeave = value;
               });
             },
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
             contentPadding: EdgeInsets.zero,
           ),
         ],
