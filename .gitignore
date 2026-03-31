@@ -32,6 +32,7 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+pubspec.lock
 
 # Symbolication related
 app.*.symbols
@@ -76,3 +77,12 @@ node_modules/
 .env
 .env.local
 .env.*.local
+
+# Security and server files
+server.pem
+*.pem
+*.key
+*.crt
+
+# Temporary server scripts
+server.py
