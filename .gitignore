@@ -86,3 +86,8 @@ server.pem
 
 # Temporary server scripts
 server.py
+
+# Network tunneling configuration
+frpc.toml
+frps.toml
+*.toml
