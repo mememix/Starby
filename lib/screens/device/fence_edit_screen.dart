@@ -4,7 +4,9 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../constants/colors.dart';
+import '../../config/app_config.dart';
 import '../../models/fence.dart';
+import '../../models/device.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
 import '../../widgets/map/amap_widget.dart';
@@ -25,6 +27,7 @@ class _FenceEditScreenState extends State<FenceEditScreen> {
   bool _isLoading = false;
   bool _isSearching = false;
   Fence? _fence; // 改为可空类型
+  Device? _device; // 设备信息
   List<Map<String, dynamic>> _searchResults = [];
   bool _isInitialized = false;
   bool _alarmEnter = true; // 进入提醒
@@ -50,6 +53,8 @@ class _FenceEditScreenState extends State<FenceEditScreen> {
           _longitude = _fence!.longitude;
           // 设置报警类型
           _setAlarmType(_fence!.alarmType);
+          // 加载设备信息
+          _loadDeviceInfo();
         } else {
           // 如果没有传递围栏参数，显示错误
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -69,6 +74,29 @@ class _FenceEditScreenState extends State<FenceEditScreen> {
         });
       }
       _isInitialized = true;
+    }
+  }
+
+  // 加载设备信息
+  Future<void> _loadDeviceInfo() async {
+    if (_fence?.deviceId == null || _fence!.deviceId.isEmpty) {
+      return;
+    }
+
+    try {
+      final token = await StorageService.getAuthToken();
+      if (token != null) {
+        ApiService().setAuthToken(token);
+      }
+
+      final device = await ApiService().getDeviceDetail(_fence!.deviceId);
+      if (mounted) {
+        setState(() {
+          _device = device;
+        });
+      }
+    } catch (e) {
+      debugPrint('加载设备信息失败: $e');
     }
   }
 
@@ -427,6 +455,9 @@ class _FenceEditScreenState extends State<FenceEditScreen> {
                       _latitude ?? 39.909187,
                       _longitude ?? 116.397451,
                     ),
+                    deviceLocation: _device?.latitude != null && _device?.longitude != null
+                        ? LatLng(_device!.latitude!.toDouble(), _device!.longitude!.toDouble())
+                        : null,
                     onTap: (position) {
                       setState(() {
                         _latitude = position.latitude;
@@ -619,7 +650,7 @@ class _FenceEditScreenState extends State<FenceEditScreen> {
 
     try {
       // 调用高德地图POI搜索API
-      final url = 'https://restapi.amap.com/v3/place/text?key=YOUR_AMAP_KEY&keywords=$query&city=北京&output=json';
+      final url = 'https://restapi.amap.com/v3/place/text?key=${AppConfig.AMAP_WEB_KEY}&keywords=$query&citylimit=1&children=1&offset=10&page=1&extensions=all';
 
       final dio = Dio();
       final response = await dio.get(url);
@@ -628,9 +659,13 @@ class _FenceEditScreenState extends State<FenceEditScreen> {
         final pois = response.data['pois'] as List;
         final results = pois.take(5).map((poi) {
           final location = (poi['location'] as String).split(',');
+          final pname = poi['pname'] ?? '';
+          final cityname = poi['cityname'] ?? '';
+          final adname = poi['adname'] ?? '';
+          final address = poi['address'] ?? '$pname$cityname$adname';
           return {
             'name': poi['name'],
-            'address': poi['address'] ?? poi['pname'] + poi['cityname'],
+            'address': address,
             'lat': double.parse(location[1]),
             'lng': double.parse(location[0]),
           };
@@ -643,22 +678,19 @@ class _FenceEditScreenState extends State<FenceEditScreen> {
           });
         }
       } else {
-        throw Exception('搜索失败');
+        throw Exception('搜索失败: ${response.data['info']}');
       }
     } catch (e) {
       debugPrint('搜索地点失败: $e');
-      // 如果API调用失败，返回模拟数据
-      await Future.delayed(const Duration(milliseconds: 300));
-      final mockResults = [
-        {'name': query, 'address': '北京市朝阳区xxx路xxx号', 'lat': 39.909187, 'lng': 116.397451},
-        {'name': '$query 广场', 'address': '北京市海淀区xxx广场', 'lat': 39.919187, 'lng': 116.407451},
-      ];
-
+      // 如果API调用失败，不返回模拟数据，显示错误提示
       if (mounted) {
         setState(() {
-          _searchResults = mockResults;
+          _searchResults = [];
           _isSearching = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('搜索失败，请稍后重试：$e')),
+        );
       }
     }
   }

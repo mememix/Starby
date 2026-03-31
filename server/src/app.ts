@@ -93,9 +93,13 @@ console.log('\n【API路由配置】');
 // 导入路由模块
 import authRoutes from './routes/auth';
 import deviceRoutes from './routes/devices';
+import deviceSharesRoutes from './routes/deviceShares';
 import fenceRoutes from './routes/fences';
 import messageRoutes from './routes/messages';
 import locationRoutes from './routes/location';
+import checkinRoutes from './routes/checkin';
+import uploadRoutes from './routes/upload';
+import remoteUploadRoutes from './routes/remoteUpload';
 
 // 注册路由
 app.use('/api/auth', authRoutes);
@@ -103,6 +107,9 @@ console.log('  ✅ /api/auth             - 认证接口');
 
 app.use('/api/devices', deviceRoutes);
 console.log('  ✅ /api/devices          - 设备管理');
+
+app.use('/api/devices', deviceSharesRoutes);
+console.log('  ✅ /api/devices/shares   - 设备共享');
 
 app.use('/api/fences', fenceRoutes);
 console.log('  ✅ /api/fences           - 电子围栏');
@@ -112,6 +119,20 @@ console.log('  ✅ /api/messages         - 消息管理');
 
 app.use('/api/location', locationRoutes);
 console.log('  ✅ /api/location         - 位置服务');
+
+app.use('/api/checkin', checkinRoutes);
+console.log('  ✅ /api/checkin          - 打卡功能');
+
+app.use('/api/upload', uploadRoutes);
+console.log('  ✅ /api/upload           - 文件上传');
+
+app.use('/api/remote-upload', remoteUploadRoutes);
+console.log('  ✅ /api/remote-upload    - 远程文件上传API');
+
+// ==================== 静态文件服务 ====================
+const uploadsPath = '/Users/mememix/CodeBuddy/Starby/server/uploads';
+app.use('/uploads', express.static(uploadsPath));
+console.log('  ✅ /uploads              - 本地文件存储');
 
 // ==================== 健康检查 ====================
 app.get('/health', (req: any, res: any) => {
@@ -151,6 +172,19 @@ console.log('\n【WebSocket服务配置】');
 const WS_ENABLED = false; // 禁用本地WebSocket服务（使用远程的JT808服务）
 console.log(`  WebSocket: ${WS_ENABLED ? '启用' : '禁用'} (使用远程JT808服务)`);
 console.log(`  远程JT808服务: 116.204.117.57:7100`);
+
+// ==================== 启动电池监控 ====================
+console.log('\n【电池监控】');
+const BATTERY_MONITOR_ENABLED = true;
+console.log(`  电池监控: ${BATTERY_MONITOR_ENABLED ? '启用' : '禁用'}`);
+
+if (BATTERY_MONITOR_ENABLED) {
+  // 启动电池监控定时任务
+  const { startBatteryMonitor } = require('./services/batteryMonitor');
+  startBatteryMonitor();
+  console.log('  低电量阈值: 20%');
+  console.log('  检查间隔: 5分钟');
+}
 
 // ==================== 启动HTTP服务器 ====================
 console.log('\n========================================');

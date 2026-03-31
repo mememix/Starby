@@ -1,12 +1,11 @@
 // lib/screens/device/partner_settings_screen.dart
 // 伙伴设置页
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:convert';
-import 'dart:io';
 import '../../constants/colors.dart';
 import '../../models/device.dart';
 import '../../routes.dart';
@@ -219,26 +218,30 @@ class _PartnerSettingsScreenState extends State<PartnerSettingsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '伙伴名称',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '伙伴名称',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _device!.name,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+                    const SizedBox(height: 8),
+                    Text(
+                      _device!.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               // 修改按钮仅手机号登录可点击
               FutureBuilder<bool>(
@@ -433,7 +436,7 @@ class _PartnerSettingsScreenState extends State<PartnerSettingsScreen> {
     }
 
     // 检查是否是emoji（长度小于等于4个字符且不包含URL格式）
-    final isEmoji = avatarUrl.length <= 4 && !avatarUrl.contains(RegExp(r'^(http|data:)'));
+    final isEmoji = avatarUrl.length <= 4 && !avatarUrl.contains(RegExp(r'^(http|data|/)'));
     if (isEmoji) {
       return Text(
         avatarUrl,
@@ -474,9 +477,19 @@ class _PartnerSettingsScreenState extends State<PartnerSettingsScreen> {
       }
     }
 
-    // 网络图片URL（未剪裁）
+    // 网络图片URL（包括相对路径）
+    String finalUrl = avatarUrl;
+    if (avatarUrl.startsWith('/uploads/')) {
+      // 获取API基础URL（静态属性）
+      final baseUrl = ApiService.baseUrl;
+      // 移除baseUrl末尾的 /api 部分
+      final serverUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
+      finalUrl = '$serverUrl$avatarUrl';
+      debugPrint('[PartnerSettings] 拼接头像URL: $finalUrl');
+    }
+
     return Image.network(
-      avatarUrl,
+      finalUrl,
       fit: BoxFit.cover,
       width: 64,
       height: 64,
@@ -541,13 +554,18 @@ class _PartnerSettingsScreenState extends State<PartnerSettingsScreen> {
   Future<void> _pickImage(ImageSource source) async {
     try {
       // 先显示权限请求确认对话框（仅相册）
-      if (source == ImageSource.gallery) {
+      // 注意：Android平台通常不需要这个确认步骤，直接请求权限即可
+      final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+      if (source == ImageSource.gallery && !isAndroid) {
+        debugPrint('[Permission] iOS平台，显示权限确认对话框');
         final confirmed = await _showPermissionConfirmDialog('相册');
         if (!confirmed) {
           debugPrint('[Permission] 用户取消了权限确认');
           return;
         }
         debugPrint('[Permission] 用户确认了权限请求，开始请求相册权限');
+      } else if (source == ImageSource.gallery && isAndroid) {
+        debugPrint('[Permission] Android平台，直接请求相册权限（跳过确认对话框）');
       }
 
       // 请求相机或存储权限
@@ -573,56 +591,103 @@ class _PartnerSettingsScreenState extends State<PartnerSettingsScreen> {
           return;
         }
       } else {
-        // iOS 使用 photos, Android 使用 storage
+        // Android 13+ 使用 READ_MEDIA_IMAGES，Android 12 及以下使用 READ_EXTERNAL_STORAGE
         Permission permission = Permission.photos;
-        if (Platform.isAndroid) {
+
+        // 先检查 Permission.photos 状态
+        final status = await permission.status;
+        debugPrint('[Permission] Permission.photos 状态: granted=${status.isGranted}, denied=${status.isDenied}, permanentlyDenied=${status.isPermanentlyDenied}, limited=${status.isLimited}');
+
+        if (status.isGranted || status.isLimited) {
+          debugPrint('[Permission] Permission.photos 已授权，直接选择照片');
+          // 权限已授予，继续
+        } else if (status.isPermanentlyDenied) {
+          debugPrint('[Permission] Permission.photos 被永久拒绝，尝试使用 READ_EXTERNAL_STORAGE');
+          // 尝试使用旧版权限
           permission = Permission.storage;
-        }
+          final storageStatus = await permission.status;
+          debugPrint('[Permission] READ_EXTERNAL_STORAGE 状态: granted=${storageStatus.isGranted}, permanentlyDenied=${storageStatus.isPermanentlyDenied}');
 
-        debugPrint('[Permission] 请求权限类型: $permission');
-
-        final status = await permission.request();
-        debugPrint('[Permission] 相册权限状态: granted=${status.isGranted}, denied=${status.isDenied}, permanentlyDenied=${status.isPermanentlyDenied}, limited=${status.isLimited}');
-
-        if (!status.isGranted && !status.isLimited) {
-          // 如果权限被拒绝，检查是否可以打开应用设置
-          if (status.isPermanentlyDenied) {
+          if (storageStatus.isGranted) {
+            debugPrint('[Permission] READ_EXTERNAL_STORAGE 已授权，使用旧版权限');
+            // 权限已授予，继续
+          } else if (storageStatus.isPermanentlyDenied) {
+            debugPrint('[Permission] 所有相册权限都被永久拒绝，打开应用设置');
             if (mounted) {
               _showPermissionDialog('相册', () async {
-                // 打开应用设置
                 await openAppSettings();
               });
             }
+            return;
           } else {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('请授予相册权限以选择照片')),
-              );
+            // 请求 READ_EXTERNAL_STORAGE
+            debugPrint('[Permission] 请求 READ_EXTERNAL_STORAGE 权限');
+            final requestStatus = await permission.request();
+            debugPrint('[Permission] 请求后 READ_EXTERNAL_STORAGE 状态: granted=${requestStatus.isGranted}, denied=${requestStatus.isDenied}, permanentlyDenied=${requestStatus.isPermanentlyDenied}');
+
+            if (!requestStatus.isGranted) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('请授予相册权限以选择照片')),
+                );
+              }
+              return;
             }
           }
-          return;
+        } else {
+          // Permission.photos 被拒绝但不是永久拒绝，请求权限
+          debugPrint('[Permission] 请求 Permission.photos');
+          final requestStatus = await permission.request();
+          debugPrint('[Permission] 请求后 Permission.photos 状态: granted=${requestStatus.isGranted}, denied=${requestStatus.isDenied}, permanentlyDenied=${requestStatus.isPermanentlyDenied}, limited=${requestStatus.isLimited}');
+
+          if (!requestStatus.isGranted && !requestStatus.isLimited) {
+            // 尝试使用旧版权限
+            debugPrint('[Permission] Permission.photos 授权失败，尝试使用 READ_EXTERNAL_STORAGE');
+            permission = Permission.storage;
+            final storageStatus = await permission.status;
+
+            if (storageStatus.isGranted) {
+              debugPrint('[Permission] READ_EXTERNAL_STORAGE 已授权，使用旧版权限');
+              // 权限已授予，继续
+            } else if (storageStatus.isPermanentlyDenied) {
+              debugPrint('[Permission] 所有相册权限都被永久拒绝，打开应用设置');
+              if (mounted) {
+                _showPermissionDialog('相册', () async {
+                  await openAppSettings();
+                });
+              }
+              return;
+            } else {
+              // 请求 READ_EXTERNAL_STORAGE
+              debugPrint('[Permission] 请求 READ_EXTERNAL_STORAGE 权限');
+              final storageRequestStatus = await permission.request();
+              debugPrint('[Permission] 请求后 READ_EXTERNAL_STORAGE 状态: granted=${storageRequestStatus.isGranted}, denied=${storageRequestStatus.isDenied}');
+
+              if (!storageRequestStatus.isGranted) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请授予相册权限以选择照片')),
+                  );
+                }
+                return;
+              }
+            }
+          }
         }
-        debugPrint('[Permission] 相册权限已授予');
+        debugPrint('[Permission] 相册权限已授予，继续选择照片');
       }
 
       final ImagePicker picker = ImagePicker();
       final XFile? image = await picker.pickImage(
         source: source,
-        imageQuality: 60, // 降低质量以减少数据大小
-        maxWidth: 400, // 减小最大尺寸
+        imageQuality: 60,
+        maxWidth: 400,
         maxHeight: 400,
       );
 
       if (image != null) {
         try {
-          // 读取图片并转换为base64
-          final bytes = await File(image.path).readAsBytes();
-          final base64Image = base64Encode(bytes);
-          final mimeType = image.path.split('.').last.toLowerCase();
-          final dataUrl = 'data:image/$mimeType;base64,$base64Image';
-
-          print('[Avatar Upload] Image size: ${bytes.length} bytes');
-          print('[Avatar Upload] Base64 length: ${dataUrl.length} characters');
+          debugPrint('[Avatar Upload] 开始上传设备头像: ${image.path}');
 
           // 显示加载提示
           if (mounted) {
@@ -631,10 +696,9 @@ class _PartnerSettingsScreenState extends State<PartnerSettingsScreen> {
             );
           }
 
-          // 调用API上传头像
-          final result = await ApiService().uploadDeviceAvatar(deviceId, dataUrl);
-
-          print('[Avatar Upload] Server response: $result');
+          // 使用新的文件上传接口
+          final result = await ApiService().uploadDeviceAvatarFile(deviceId, image.path);
+          debugPrint('[Avatar Upload] Server response: $result');
 
           // 先重新加载设备详情以获取服务器压缩后的头像
           await _loadDeviceDetail();
@@ -645,9 +709,11 @@ class _PartnerSettingsScreenState extends State<PartnerSettingsScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('头像上传成功')),
             );
+            // 返回上一页，通知详情页刷新
+            Navigator.pop(context, true);
           }
         } catch (e) {
-          print('[Avatar Upload] Error: $e');
+          debugPrint('[Avatar Upload] Error: $e');
 
           // 解析错误信息
           String errorMessage = '上传头像失败';

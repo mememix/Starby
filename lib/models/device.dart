@@ -20,32 +20,17 @@ class Device {
   final String? ip;             // 设备IP地址（外部平台推送数据用）
   final int? port;              // 设备端口（外部平台推送数据用）
 
-  /// 获取设备特定的校正坐标
-  /// 优先使用设备校正映射表中的目标坐标，如果没有则返回原始坐标
-  Map<String, double>? get deviceCorrectedCoordinates {
-    if (latitude == null || longitude == null) return null;
-    return CoordinateConverter.applyDeviceCorrection(id, latitude!, longitude!);
-  }
-
-  /// 获取设备校正后的纬度
-  double? get deviceCorrectedLatitude => deviceCorrectedCoordinates?['latitude'];
-
-  /// 获取设备校正后的经度
-  double? get deviceCorrectedLongitude => deviceCorrectedCoordinates?['longitude'];
-
-  /// 获取纠偏后的坐标（GPS -> GCJ-02 高德地图）
-  @Deprecated('使用 deviceCorrectedCoordinates 代替，它会应用设备特定的坐标校正')
+  /// 获取统一纠偏后的坐标（GPS -> GCJ-02 + 统一偏移）
+  /// 所有设备都应用统一的坐标转换方案（基于设备39350168272验证）
   Map<String, double>? get correctedCoordinates {
     if (latitude == null || longitude == null) return null;
     return CoordinateConverter.gpsToAmap(latitude!, longitude!);
   }
 
   /// 获取纠偏后的纬度
-  @Deprecated('使用 deviceCorrectedLatitude 代替，它会应用设备特定的坐标校正')
   double? get correctedLatitude => correctedCoordinates?['latitude'];
 
   /// 获取纠偏后的经度
-  @Deprecated('使用 deviceCorrectedLongitude 代替，它会应用设备特定的坐标校正')
   double? get correctedLongitude => correctedCoordinates?['longitude'];
 
   Device({

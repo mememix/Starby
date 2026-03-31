@@ -122,9 +122,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 onTap: () async {
                   Navigator.pop(context, await picker.pickImage(
                     source: ImageSource.camera,
-                    imageQuality: 30,
-                    maxWidth: 128,
-                    maxHeight: 128,
+                    imageQuality: 60,
+                    maxWidth: 400,
+                    maxHeight: 400,
                   ));
                 },
               ),
@@ -134,9 +134,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 onTap: () async {
                   Navigator.pop(context, await picker.pickImage(
                     source: ImageSource.gallery,
-                    imageQuality: 30,
-                    maxWidth: 128,
-                    maxHeight: 128,
+                    imageQuality: 60,
+                    maxWidth: 400,
+                    maxHeight: 400,
                   ));
                 },
               ),
@@ -153,58 +153,27 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         }
 
         try {
-          // 注意：这里暂时使用base64上传，实际应该使用multipart/form-data
-          final bytes = await image.readAsBytes();
-          final base64Image = base64Encode(bytes);
-          // 构建图片URL（临时方案，实际应该由后端返回）
-          final avatarUrl = 'data:image/jpeg;base64,$base64Image';
-
-          // 检查图片大小（整个URL最大5000字符，这是服务器最终限制）
-          const maxUrlLength = 5000; // 服务器最终限制
-          const maxOriginalBytes = 3500; // 原始图片字节数限制（base64编码后会增大）
-          
-          // 先检查原始字节大小
-          if (bytes.length > maxOriginalBytes) {
-            debugPrint('[ProfileEdit] 图片原始字节过大: ${bytes.length}字节 > 限制$maxOriginalBytes字节');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('图片太大（${(bytes.length / 1024).toStringAsFixed(1)}KB），请选择更小的图片'),
-                  duration: const Duration(seconds: 5),
-                ),
-              );
-            }
-            return;
-          }
-          
-          // 再检查base64 URL长度
-          if (avatarUrl.length > maxUrlLength) {
-            debugPrint('[ProfileEdit] 图片过大: URL长度=${avatarUrl.length}, 限制=$maxUrlLength');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('图片过大（${avatarUrl.length}字符），请选择更小的图片'),
-                  duration: const Duration(seconds: 5),
-                ),
-              );
-            }
-            return;
-          }
-
-          // 调用API更新用户头像
-          debugPrint('[ProfileEdit] 上传头像URL长度: ${avatarUrl.length}, base64数据长度: ${base64Image.length}');
-          final response = await ApiService().uploadUserAvatar(avatarUrl);
+          // 使用新的文件上传接口
+          debugPrint('[ProfileEdit] 开始上传用户头像: ${image.path}');
+          final response = await ApiService().uploadUserAvatarFile(image.path);
           debugPrint('[ProfileEdit] 头像上传响应: $response');
 
           // 从响应中获取更新后的头像URL
           String? updatedAvatarUrl;
           if (response['success'] == true) {
-            updatedAvatarUrl = response['data']['user']['avatar'];
+            updatedAvatarUrl = response['data']['avatarUrl'];
             debugPrint('[ProfileEdit] 更新后的头像URL: $updatedAvatarUrl');
+
+            // 更新本地存储的用户信息
+            final userInfo = await StorageService.getUserInfo();
+            if (userInfo != null) {
+              userInfo['avatar'] = updatedAvatarUrl;
+              await StorageService.saveUserInfo(userInfo);
+            }
           }
 
           if (mounted) {
-            setState(() => _avatar = updatedAvatarUrl ?? avatarUrl);
+            setState(() => _avatar = updatedAvatarUrl);
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('头像已更新')),
             );

@@ -159,28 +159,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       // 加载统计数据
-      try {
-        final statsResponse = await ApiService().getUserStats();
-        if (statsResponse['success'] == true && statsResponse['data'] != null) {
-          final statsData = statsResponse['data'];
-          debugPrint('[ProfileScreen] 统计数据: $statsData');
-          setState(() {
-            _myPartners = statsData['myPartners'] ?? 0;
-            _sharedMembers = statsData['sharedMembers'] ?? 0;
-            _checkInDays = statsData['checkInDays'] ?? 0;
-          });
-        }
-      } catch (e) {
-        debugPrint('[ProfileScreen] 加载统计数据失败: $e');
-        // 使用默认值
-        setState(() {
-          _myPartners = 0;
-          _sharedMembers = 0;
-          _checkInDays = 0;
-        });
-      }
+      await _loadStats();
     } else {
       setState(() => _isLoading = false);
+    }
+  }
+
+  // 单独加载统计数据
+  Future<void> _loadStats() async {
+    try {
+      final statsResponse = await ApiService().getUserStats();
+      if (statsResponse['success'] == true && statsResponse['data'] != null) {
+        final statsData = statsResponse['data'];
+        debugPrint('[ProfileScreen] 统计数据: $statsData');
+        setState(() {
+          _myPartners = statsData['myPartners'] ?? 0;
+          _sharedMembers = statsData['sharedMembers'] ?? 0;
+          _checkInDays = statsData['checkInDays'] ?? 0;
+        });
+      }
+    } catch (e) {
+      debugPrint('[ProfileScreen] 加载统计数据失败: $e');
+      // 保持现有数据不变
     }
   }
 
@@ -211,7 +211,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
-            
+
             // 内容区域
             Expanded(
               child: SingleChildScrollView(
@@ -371,13 +371,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // 统计项
   Widget _buildStatItem(String count, String label) {
     return GestureDetector(
-      onTap: () {
-        // 打卡天数点击跳转
+      onTap: () async {
+        // 打卡天数点击跳转到打卡页面
         if (label == '打卡天数') {
-          // TODO: 实现打卡页面
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('打卡功能开发中')),
-          );
+          await Navigator.pushNamed(context, AppRoutes.checkin);
+          // 从打卡页面返回后刷新统计数据
+          if (mounted && isPhoneLogin) {
+            _loadStats();
+          }
         }
       },
       child: Column(

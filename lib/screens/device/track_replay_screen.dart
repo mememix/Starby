@@ -3,6 +3,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:dio/dio.dart';
 import '../../constants/colors.dart';
 import '../../models/location.dart';
@@ -23,7 +24,8 @@ class TrackReplayScreen extends StatefulWidget {
 class _TrackReplayScreenState extends State<TrackReplayScreen> {
   bool isPlaying = false;
   double progress = 0.0;
-  String selectedSpeed = '1x';
+  String selectedSpeed = '1x'; // 显示速度（1x, 2x, 4x, 8x）
+  double baseSpeedMultiplier = 4.0; // 内部基准速度倍数（默认4倍速）
   DateTime? selectedDate;
   TimeOfDay? startTime;
   TimeOfDay? endTime;
@@ -33,6 +35,14 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
   Timer? _playbackTimer;
   bool _isLoading = false;
   String? _errorMessage;
+
+  // 显示速度到内部速度的映射
+  final Map<String, double> _speedMapping = {
+    '1x': 4.0,   // 显示1x = 内部4x
+    '2x': 8.0,   // 显示2x = 内部8x
+    '4x': 16.0,  // 显示4x = 内部16x
+    '8x': 32.0,  // 显示8x = 内部32x
+  };
 
   @override
   void didChangeDependencies() {
@@ -79,7 +89,7 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
         ApiService().setAuthToken(token);
       }
 
-      // 获取选择日期的开始和结束时间
+      // 获取选择日期的开始和结束时间（全天数据）
       final start = DateTime(date.year, date.month, date.day);
       final end = start.add(const Duration(days: 1));
 
@@ -87,7 +97,7 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
         deviceId,
         start: start,
         end: end,
-        limit: 1000,
+        limit: 10000,
       );
 
       if (mounted) {
@@ -123,7 +133,7 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
     if (locations.isEmpty) {
       return const LatLng(39.909187, 116.397451); // 默认北京
     }
-    // 使用第一个位置点作为中心
+    // 使用第一个位置点作为中心（已经是按时间升序排列）
     return LatLng(locations.first.lat, locations.first.lng);
   }
 
@@ -144,8 +154,8 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
 
     setState(() => isPlaying = true);
 
-    // 获取速度倍数
-    double speedMultiplier = double.parse(selectedSpeed.replaceAll('x', ''));
+    // 获取实际播放速度倍数（使用映射表）
+    double speedMultiplier = _speedMapping[selectedSpeed] ?? 4.0;
 
     // 计算播放间隔
     int intervalMs = (1000 / speedMultiplier).round();
@@ -187,7 +197,7 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
 
     if (locations.isEmpty) return markers;
 
-    // 添加起点和终点标记
+    // 添加起点标记（第一个位置点，时间最早）
     if (locations.isNotEmpty) {
       final startLocation = locations.first;
       markers.add(Marker(
@@ -201,15 +211,15 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
       ));
     }
 
-    // 添加终点标记
+    // 添加当前位置标记（播放进度所在位置）
     if (currentIndex > 0 && currentIndex < locations.length) {
-      final endLocation = locations[currentIndex];
+      final currentLocation = locations[currentIndex];
       markers.add(Marker(
         id: 'current',
-        position: LatLng(endLocation.lat, endLocation.lng),
+        position: LatLng(currentLocation.lat, currentLocation.lng),
         infoWindow: InfoWindow(
           title: '当前位置',
-          snippet: _formatTime(endLocation.timestamp),
+          snippet: _formatTime(currentLocation.timestamp),
         ),
         isOnline: true,
       ));
@@ -222,6 +232,7 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
   Set<Polyline> get _currentPolylines {
     if (locations.isEmpty || currentIndex == 0) return {};
 
+    // 从起点到当前位置绘制轨迹
     final points = locations
         .take(currentIndex + 1)
         .map((l) => LatLng(l.lat, l.lng))
@@ -359,6 +370,7 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
                 initialDate: selectedDate ?? DateTime.now(),
                 firstDate: DateTime.now().subtract(const Duration(days: 90)),
                 lastDate: DateTime.now(),
+                locale: const Locale('zh', 'CN'),
               );
               if (picked != null) {
                 // 重新加载该日期的轨迹数据
@@ -693,17 +705,19 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
                       fontSize: 13,
                       color: AppColors.textPrimary,
                     ),
-                    items: ['1x', '2x', '4x', '8x'].map((String value) {
+                    items: const ['1x', '2x', '4x', '8x'].map((String value) {
                       return DropdownMenuItem<String>(
                         value: value,
                         child: Text(value),
                       );
                     }).toList(),
                     onChanged: (newValue) {
-                      _pausePlayback();
-                      setState(() {
-                        selectedSpeed = newValue!;
-                      });
+                      if (newValue != null) {
+                        _pausePlayback();
+                        setState(() {
+                          selectedSpeed = newValue;
+                        });
+                      }
                     },
                   ),
                 ),

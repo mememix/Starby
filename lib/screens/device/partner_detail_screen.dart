@@ -117,7 +117,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> {
         final finalLat = location.lat;
         final finalLng = location.lng;
 
-        // 调用实时逆地理编码获取地址（与首页保持一致）
+        // 调用实时逆地理编码获取地址（使用更详细的参数）
         String? realtimeAddress;
         try {
           realtimeAddress = await AmapService.getAddress(
@@ -129,28 +129,36 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> {
           debugPrint('[PartnerDetail] 逆地理编码失败: $e');
         }
 
-        // 优先使用实时逆地理编码的地址，如果失败则使用设备表地址
+        // 使用实时逆地理编码地址（不依赖后端的address字段）
         mergedLocation = Location(
           id: location.id,
           deviceId: deviceId,
           lat: finalLat,
           lng: finalLng,
-          address: realtimeAddress ?? _device!.address, // 优先使用实时逆地理编码地址
+          address: realtimeAddress ?? '获取地址中...', // 只使用实时逆地理编码
           accuracy: location.accuracy,
-          battery: _device!.battery, // 直接使用设备表的电量
+          battery: _currentLocation?.battery ?? _device!.battery, // 优先使用lot_track的电量
           timestamp: location.timestamp,
           type: location.type,
         );
         finalAddress = mergedLocation.address;
       } else if (_device!.latitude != null && _device!.longitude != null) {
-        // API返回无效数据，使用设备表的位置作为后备（设备表坐标已经是GCJ-02，无需纠偏）
+        // API返回无效数据，使用设备表的位置作为后备（应用统一坐标校正）
         debugPrint('[PartnerDetail] API返回(0,0), 使用设备表位置: lat=${_device!.latitude}, lng=${_device!.longitude}');
+
+        // 应用统一坐标校正（所有设备使用统一偏移）
+        final corrected = _device!.correctedCoordinates ??
+            {'latitude': _device!.latitude!, 'longitude': _device!.longitude!};
+        final finalLat = corrected['latitude']!;
+        final finalLng = corrected['longitude']!;
+
+        debugPrint('[PartnerDetail] 应用统一坐标校正: (${_device!.latitude}, ${_device!.longitude}) -> ($finalLat, $finalLng)');
 
         mergedLocation = Location(
           id: _device!.id,
           deviceId: deviceId,
-          lat: _device!.latitude!,
-          lng: _device!.longitude!,
+          lat: finalLat,
+          lng: finalLng,
           address: _device!.address,
           accuracy: null,
           battery: _device!.battery,
@@ -308,10 +316,20 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> {
       }
     }
 
-    // 网络图片URL
+    // 网络图片URL（包括相对路径）
+    String finalUrl = avatarUrl;
+    if (avatarUrl.startsWith('/uploads/')) {
+      // 获取API基础URL（静态属性）
+      final baseUrl = ApiService.baseUrl;
+      // 移除baseUrl末尾的 /api 部分
+      final serverUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
+      finalUrl = '$serverUrl$avatarUrl';
+      debugPrint('[PartnerDetail] 拼接头像URL: $finalUrl');
+    }
+
     return ClipOval(
       child: Image.network(
-        avatarUrl,
+        finalUrl,
         fit: BoxFit.cover,
         width: 64,
         height: 64,

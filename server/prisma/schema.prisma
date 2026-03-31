@@ -61,7 +61,7 @@ model Device {
   vehicleType      String?   @map("vehicle_type") @db.VarChar(50)
   company          String?   @db.VarChar(200)
   status           String?   @default("0") @db.VarChar(10)
-  avatar           String?   @db.Text
+  avatar           String?   @db.VarChar(5000)
   manufacturer     String?   @db.VarChar(100)
   decodeProtocol   String?   @map("decode_protocol") @db.VarChar(50)
   remark           String?   @db.VarChar(500)
@@ -360,6 +360,7 @@ model lot_checkin {
   longitude       Decimal?  @db.Decimal(10, 6)
   latitude        Decimal?  @db.Decimal(10, 6)
   continuous_days Int?      @default(0)
+  points          Int?      @default(0)
   like_count      Int?      @default(0)
   device_code     String?   @db.VarChar(100)
   address         String?   @db.VarChar(255)
@@ -774,6 +775,58 @@ model sys_user_post {
   post_id BigInt
 
   @@id([user_id, post_id])
+}
+
+model UserLoginDevice {
+  id            BigInt    @id @default(autoincrement())
+  userId        BigInt    @map("user_id")
+  deviceId      String    @map("device_id") @db.VarChar(128)
+  deviceName    String?   @default("") @map("device_name") @db.VarChar(100)
+  deviceType    String?   @default("") @map("device_type") @db.VarChar(50)
+  ipAddress     String?   @default("") @map("ip_address") @db.VarChar(128)
+  location      String?   @default("") @map("location") @db.VarChar(255)
+  userAgent     String?   @default("") @map("user_agent") @db.VarChar(500)
+  isCurrent     Boolean?  @default(false) @map("is_current")
+  lastLoginTime DateTime? @map("last_login_time") @db.DateTime(0)
+  createTime    DateTime? @default(now()) @map("create_time") @db.DateTime(0)
+  updateTime    DateTime? @default(now()) @map("update_time") @db.DateTime(0)
+  delFlag       Boolean?  @default(false) @map("del_flag")
+
+  @@index([deviceId], map: "idx_device_id")
+  @@index([userId], map: "idx_user_id")
+  @@map("lot_user_login_device")
+}
+
+model CheckinStats {
+  statsId         BigInt    @id @default(autoincrement()) @map("stats_id")
+  userId          BigInt    @map("user_id")
+  statsYear       Int       @map("stats_year")
+  statsMonth      Int       @map("stats_month")
+  totalDays       Int?      @default(0) @map("total_days")
+  continuousDays  Int?      @default(0) @map("continuous_days")
+  lastCheckinDate DateTime? @map("last_checkin_date") @db.Date
+  createTime      DateTime? @default(now()) @map("create_time") @db.DateTime(0)
+  updateTime      DateTime? @default(now()) @map("update_time") @db.DateTime(0)
+
+  @@index([userId], map: "idx_user_id")
+  @@index([statsYear], map: "idx_stats_year")
+  @@index([statsMonth], map: "idx_stats_month")
+  @@map("lot_checkin_stats")
+}
+
+model PointsRecord {
+  recordId    BigInt    @id @default(autoincrement()) @map("record_id")
+  userId      BigInt    @map("user_id")
+  points      Int       @map("points")
+  recordType  String?   @default("CHECKIN") @map("record_type") @db.VarChar(50)
+  description String?   @map("description") @db.VarChar(200)
+  relatedId   BigInt?   @map("related_id")
+  createTime  DateTime? @default(now()) @map("create_time") @db.DateTime(0)
+
+  @@index([userId], map: "idx_user_id")
+  @@index([recordType], map: "idx_record_type")
+  @@index([createTime], map: "idx_create_time")
+  @@map("lot_points_record")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments

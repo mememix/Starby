@@ -50,7 +50,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ApiService().setAuthToken(token);
       }
 
-      // 获取选择日期的开始和结束时间
+      // 获取选择日期的开始和结束时间（全天数据）
       final start = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
       final end = start.add(const Duration(days: 1));
 
@@ -61,7 +61,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         deviceId,
         start: start,
         end: end,
-        limit: 1000,
+        limit: 10000,
       );
 
       if (mounted) {

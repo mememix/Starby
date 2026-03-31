@@ -109,26 +109,42 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
 
     if (phone) {
       // 判断是管理后台登录还是移动端登录
-      // 如果是 admin 或其他管理员账号，查询 sys_user 表
-      if (phone === 'admin' || phone.length <= 10) {
-        // 管理后台登录 - 使用 sys_user 表
+      // 先尝试查询 lot_user 表（移动端）
+      let isSysUser = false;
+
+      // 优先查询 lot_user 表（移动端用户）
+      user = await prisma.$queryRaw`
+        SELECT user_id, phone_number, nickname, password, avatar_url
+        FROM lot_user
+        WHERE phone_number = ${phone}
+        AND del_flag = '0'
+      ` as any[];
+
+      if (!user || user.length === 0) {
+        // lot_user 表不存在，查询 sys_user 表（管理后台）
+        isSysUser = true;
         user = await prisma.$queryRaw`
           SELECT user_id, user_name, nick_name, phonenumber, password, avatar
           FROM sys_user
           WHERE (user_name = ${phone} OR phonenumber = ${phone})
           AND del_flag = '0'
         ` as any[];
+      }
 
-        if (!user || user.length === 0) {
-          return res.status(401).json({
-            success: false,
-            message: '用户不存在'
-          });
-        }
+      if (!user || user.length === 0) {
+        return res.status(401).json({
+          success: false,
+          message: '用户不存在'
+        });
+      }
 
-        user = user[0];
+      user = user[0];
 
-        // 管理后台密码验证（支持明文、MD5、bcrypt）
+      // 密码验证
+      let passwordValid = false;
+
+      if (isSysUser) {
+        // sys_user 表密码验证（支持明文、bcrypt）
         if (!user.password) {
           return res.status(401).json({
             success: false,
@@ -136,47 +152,19 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
           });
         }
 
-        let passwordValid = false;
-        
-        // 先尝试明文密码比对（admin 用户是明文）
+        // 先尝试明文密码比对
         if (user.password === password) {
           passwordValid = true;
         } else if (user.password.length > 20) {
-          // bcrypt 比对（若依框架加密方式）
+          // bcrypt 比对
           try {
             passwordValid = await bcrypt.compare(password, user.password);
           } catch (error) {
             // bcrypt 比对失败，保持 false
           }
         }
-
-        if (!passwordValid) {
-          return res.status(401).json({
-            success: false,
-            message: '密码错误'
-          });
-        }
       } else {
-        // 移动端登录 - 使用 lot_user 表
-        user = await prisma.$queryRaw`
-          SELECT user_id, phone_number, nickname, password, avatar_url
-          FROM lot_user
-          WHERE phone_number = ${phone}
-          AND del_flag = '0'
-        ` as any[];
-
-        if (!user || user.length === 0) {
-          return res.status(401).json({
-            success: false,
-            message: '用户不存在'
-          });
-        }
-
-        user = user[0];
-
-        // 尝试密码验证（支持 MD5 和 bcrypt）
-        let passwordValid = false;
-        
+        // lot_user 表密码验证（支持 MD5、明文、bcrypt）
         // 先尝试 MD5 比对
         const md5Hash = require('crypto').createHash('md5').update(password).digest('hex');
         if (user.password === md5Hash) {
@@ -192,13 +180,13 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
             // bcrypt 比对失败，保持 false
           }
         }
+      }
 
-        if (!passwordValid) {
-          return res.status(401).json({
-            success: false,
-            message: '密码错误'
-          });
-        }
+      if (!passwordValid) {
+        return res.status(401).json({
+          success: false,
+          message: '密码错误'
+        });
       }
     } else if (deviceNo) {
       // 设备号登录
@@ -729,54 +717,21 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response, next
     // 这里简化处理：暂时返回0，因为没有share_user_ids字段
     const sharedMembers = 0;
 
-    // 打卡天数 - 使用location记录来统计有位置更新的天数
-    const deviceBindings = await prisma.$queryRaw`
-      SELECT device_id
-      FROM lot_user_device_bind
+    // 打卡天数 - 从lot_checkin表统计
+    const checkinStats = await prisma.$queryRaw`
+      SELECT COUNT(DISTINCT DATE(checkin_time)) as check_in_days
+      FROM lot_checkin
       WHERE user_id = ${userId}
-      AND bind_status = 1
     ` as any[];
 
-    const deviceIds = deviceBindings.map(b => b.device_id).filter((id): id is bigint => id !== null);
-
-    if (deviceIds.length === 0) {
-      res.json({
-        success: true,
-        data: {
-          myPartners: myPartnersCount,
-          sharedMembers: sharedMembers,
-          checkInDays: 0
-        }
-      });
-      return;
-    }
-
-    // 将 BigInt 转换为字符串
-    const deviceIdsStr = deviceIds.map(id => id.toString());
-
-    const locations = await prisma.$queryRaw`
-      SELECT location_time
-      FROM lot_track
-      WHERE device_id IN (${deviceIdsStr.join(',')})
-      ORDER BY location_time DESC
-      LIMIT 1000
-    ` as any[];
-
-    // 统计不同日期的数量
-    const uniqueDays = new Set<string>();
-    locations.forEach(loc => {
-      if (loc.location_time) {
-        const date = new Date(loc.location_time).toISOString().split('T')[0];
-        uniqueDays.add(date);
-      }
-    });
+    const checkInDays = Number(checkinStats[0]?.check_in_days || 0);
 
     res.json({
       success: true,
       data: {
         myPartners: myPartnersCount,
         sharedMembers: sharedMembers,
-        checkInDays: uniqueDays.size
+        checkInDays: checkInDays
       }
     });
   } catch (error) {

@@ -3,47 +3,39 @@ import 'package:flutter/foundation.dart';
 
 /// 坐标纠偏工具类
 /// 用于将GPS坐标纠偏为高德地图/百度地图使用的坐标系统
+///
+/// 注意：所有设备统一使用后端的坐标转换方案（WGS-84 + 统一偏移 -> GCJ-02）
+/// 基于设备39350168272（狗子）验证的偏移值：
+/// - 纬度偏移: +0.000000
+/// - 经度偏移: +0.001700
 class CoordinateConverter {
-  /// 设备坐标校正映射表
-  /// 用于特定设备的坐标偏差校正
-  /// key: deviceId, value: {'latitude': 纠正值, 'longitude': 纠正值}
-  static const Map<String, Map<String, double>> _deviceCorrections = {
-    '2000': {
-      'latitude': 39.876168, // 北京市西城区北京西站南路80号（茗筑大厦）
-      'longitude': 116.321568,
-    },
-    // 可以继续添加其他设备的校正
-    // 'deviceId': {
-    //   'latitude': 目标纬度,
-    //   'longitude': 目标经度,
-    // },
-  };
-
-  /// 应用设备坐标校正
-  ///
-  /// [deviceId] 设备ID
-  /// [latitude] 原始纬度
-  /// [longitude] 原始经度
-  /// 返回校正后的坐标 {latitude, longitude}，如果没有配置则返回原始坐标
-  static Map<String, double> applyDeviceCorrection(String deviceId, double latitude, double longitude) {
-    if (_deviceCorrections.containsKey(deviceId)) {
-      final correction = _deviceCorrections[deviceId]!;
-      debugPrint('[CoordinateConverter] 应用设备 $deviceId 的坐标校正: ($latitude, $longitude) -> (${correction['latitude']}, ${correction['longitude']})');
-      return {
-        'latitude': correction['latitude']!,
-        'longitude': correction['longitude']!,
-      };
-    }
-    return {'latitude': latitude, 'longitude': longitude};
-  }
-
   /// 将GPS坐标转换为高德地图坐标（GCJ-02）
+  ///
+  /// 转换流程：
+  /// 1. 在WGS-84坐标系中应用统一偏移（校正GPS系统误差）
+  /// 2. WGS-84 转 GCJ-02
   ///
   /// [latitude] 纬度
   /// [longitude] 经度
   /// 返回纠偏后的坐标 {latitude, longitude}
   static Map<String, double> gpsToAmap(double latitude, double longitude) {
-    return _transform(latitude, longitude);
+    // 第一步：在WGS-84坐标系中应用统一偏移（基于设备39350168272验证）
+    final offseted = {
+      'latitude': latitude + 0.000000,  // 统一纬度偏移
+      'longitude': longitude + 0.001700, // 统一经度偏移
+    };
+
+    // 第二步：将校正后的WGS-84坐标转换为GCJ-02
+    final gcj02 = _transform(offseted['latitude']!, offseted['longitude']!);
+
+    if (kDebugMode) {
+      debugPrint('[CoordinateConverter] 坐标转换: '
+          '原始WGS-84($latitude, $longitude) -> '
+          '应用偏移(${offseted['latitude']}, ${offseted['longitude']}) -> '
+          'GCJ-02(${gcj02['latitude']}, ${gcj02['longitude']})');
+    }
+
+    return gcj02;
   }
 
   /// 将GPS坐标转换为百度地图坐标（BD-09）

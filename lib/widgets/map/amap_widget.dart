@@ -21,6 +21,7 @@ class AMapWidget extends StatefulWidget {
   final Set<Polyline>? polylines;
   final bool myLocationEnabled;
   final bool showNavigationButton;
+  final LatLng? deviceLocation; // 设备当前位置(用于定位按钮)
 
   const AMapWidget({
     super.key,
@@ -32,6 +33,7 @@ class AMapWidget extends StatefulWidget {
     this.polylines,
     this.myLocationEnabled = true,
     this.showNavigationButton = false,
+    this.deviceLocation,
   });
 
   @override
@@ -134,10 +136,19 @@ class _AMapWidgetState extends State<AMapWidget> {
             bottom: widget.showNavigationButton ? 100 : 16,
             child: FloatingActionButton.small(
               onPressed: () {
-                if (widget.markers != null && widget.markers!.isNotEmpty) {
-                  final marker = widget.markers!.first;
+                // 优先使用设备位置，如果没有则使用第一个标记点
+                LatLng? targetLocation;
+                if (widget.deviceLocation != null) {
+                  targetLocation = widget.deviceLocation;
+                } else if (widget.markers != null && widget.markers!.isNotEmpty) {
+                  targetLocation = widget.markers!.first.position;
+                } else if (widget.initialCameraPosition != null) {
+                  targetLocation = widget.initialCameraPosition;
+                }
+
+                if (targetLocation != null) {
                   _mapController.move(
-                    ll.LatLng(marker.position.latitude, marker.position.longitude),
+                    ll.LatLng(targetLocation.latitude, targetLocation.longitude),
                     16.0,
                   );
                 }

@@ -33,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (avatarUrl == null || avatarUrl.isEmpty) {
       return null;
     }
-    
+
     // 检查是否为data:image/开头的base64数据URI
     if (avatarUrl.startsWith('data:image/') && avatarUrl.contains(';base64,')) {
       try {
@@ -49,8 +49,19 @@ class _HomeScreenState extends State<HomeScreen> {
         return null;
       }
     } else {
+      // 如果是相对路径（以 /uploads/ 开头），拼接服务器地址
+      String finalUrl = avatarUrl;
+      if (avatarUrl.startsWith('/uploads/')) {
+        // 获取API基础URL（静态属性）
+        final baseUrl = ApiService.baseUrl;
+        // 移除baseUrl末尾的 /api 部分
+        final serverUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
+        finalUrl = '$serverUrl$avatarUrl';
+        debugPrint('[HomeScreen] 拼接头像URL: $finalUrl');
+      }
+
       // 如果是普通的网络URL，使用NetworkImage
-      return NetworkImage(avatarUrl);
+      return NetworkImage(finalUrl);
     }
   }
 
@@ -89,16 +100,15 @@ class _HomeScreenState extends State<HomeScreen> {
       final devices = await ApiService().getDevices();
       debugPrint('[HomeScreen] Loaded ${devices.length} devices');
 
-      // 直接使用设备对象中的位置信息，不调用位置API
+      // 直接使用设备对象中的位置信息（后端已进行坐标转换）
       Map<String, Location> locations = {};
       for (final device in devices) {
         debugPrint('[HomeScreen] 检查设备 ${device.name} (ID: ${device.id}): lat=${device.latitude}, lng=${device.longitude}');
         if (device.latitude != null && device.longitude != null) {
-          // 应用设备特定的坐标校正
-          final corrected = device.deviceCorrectedCoordinates ??
-              {'latitude': device.latitude!, 'longitude': device.longitude!};
-          final finalLat = corrected['latitude']!;
-          final finalLng = corrected['longitude']!;
+          // 注意：后端API已经对坐标进行了转换（WGS-84 -> GCJ-02 + 统一偏移）
+          // 前端直接使用后端返回的坐标，不再进行二次转换
+          final finalLat = device.latitude!;
+          final finalLng = device.longitude!;
 
           // 设备有位置数据，使用设备对象中的位置
           locations[device.id] = Location(
@@ -112,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
             timestamp: device.lastUpdate ?? DateTime.now(),
             type: 'gps',
           );
-          debugPrint('[HomeScreen] Device ${device.name} (${device.id}): 原始lat=${device.latitude}, 原始lng=${device.longitude}, 校正后lat=$finalLat, 校正后lng=$finalLng, addr=${device.address}');
+          debugPrint('[HomeScreen] Device ${device.name} (${device.id}): 使用后端转换后坐标 lat=$finalLat, lng=$finalLng, addr=${device.address}');
         } else {
           debugPrint('[HomeScreen] Device ${device.name} (${device.id}): No location data (lat=${device.latitude}, lng=${device.longitude})');
         }
@@ -151,12 +161,19 @@ class _HomeScreenState extends State<HomeScreen> {
       if (device.latitude != null && device.longitude != null) {
         try {
           debugPrint('[HomeScreen] 处理设备 ${device.name} (ID: ${device.id})');
-          debugPrint('[HomeScreen] 原始坐标: ${device.latitude}, ${device.longitude}');
+          debugPrint('[HomeScreen] 后端转换后坐标: ${device.latitude}, ${device.longitude}');
 
-          // 后端API已经应用了坐标纠偏，直接使用设备坐标
+          // 注意：后端API已经对坐标进行了转换
+          // 前端直接使用后端返回的坐标进行逆地理编码，不再进行二次转换
+          final finalLat = device.latitude!;
+          final finalLng = device.longitude!;
+
+          debugPrint('[HomeScreen] 逆地理编码使用坐标: $finalLat, $finalLng');
+
+          // 使用后端转换后的坐标进行逆地理编码
           final address = await AmapService.getAddress(
-            device.longitude!,
-            device.latitude!,
+            finalLng,
+            finalLat,
           );
           if (address != null && mounted) {
             setState(() {
@@ -456,18 +473,15 @@ class _HomeScreenState extends State<HomeScreen> {
       final displayAvatar = device.avatar ?? _getDefaultAvatar(device.name);
       final isEmojiAvatar = displayAvatar.length <= 4 && displayAvatar.runes.length <= 4;
 
-    // 使用真实的位置信息 - 优先使用实时逆地理编码地址
+    // 使用实时逆地理编码的地址（不依赖后端的address字段）
     String locationText;
 
     if (_realtimeAddresses[device.id] != null) {
-      // 使用实时逆地理编码地址
+      // 优先使用实时逆地理编码地址
       locationText = _realtimeAddresses[device.id]!;
-    } else if (location != null && location.lat != 0.0 && location.lng != 0.0) {
-      // 使用位置API返回的信息
-      locationText = location.address ?? device.address ?? '等待位置更新';
     } else if (device.latitude != null && device.longitude != null) {
-      // 使用设备对象中的位置信息作为后备
-      locationText = device.address ?? '等待位置更新';
+      // 等待实时逆地理编码完成
+      locationText = '获取地址中...';
     } else {
       locationText = '等待位置更新';
     }

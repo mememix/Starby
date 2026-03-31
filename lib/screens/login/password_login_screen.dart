@@ -271,52 +271,64 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
         deviceType: deviceType,
       );
 
-      if (result['success'] == true) {
-        final token = result['data']['token'] as String;
-        final user = result['data']['user'] as Map<String, dynamic>;
-
-        final tokenPreview = token.length > 30 ? '${token.substring(0, 30)}...' : token;
-        print('[Login] Saving token: $tokenPreview...');
-        // 保存Token和用户信息
-        await StorageService.setAuthToken(token);
-        await StorageService.setUserId(user['id'] as String);
-        await StorageService.setUserPhone(user['phone'] as String);
-        await StorageService.setLoggedIn(true);
-        await StorageService.setLoginType('password');
-
-        // 保存完整的用户信息（包括token）
-        await StorageService.saveUserInfo({
-          'id': user['id'],
-          'phone': user['phone'],
-          'nickname': user['nickname'] ?? '',
-          'avatar': user['avatar'],
-          'token': token,
-        });
-
-        // 验证保存是否成功
-        final savedToken = await StorageService.getAuthToken();
-        final savedTokenPreview = savedToken != null && savedToken.length > 30 
-            ? '${savedToken.substring(0, 30)}...' 
-            : (savedToken ?? 'null');
-        print('[Login] After save, get saved token: $savedTokenPreview...');
-
-        // 设置ApiService的Token
-        ApiService().setAuthToken(token);
-
-        if (mounted) {
-          final homeStyle = await StorageService.getHomeStyle();
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            homeStyle == 'classic' ? AppRoutes.home : AppRoutes.homeImmersive,
-            (route) => false,
-          );
-        }
-      } else {
+      // 检查登录是否成功
+      if (result['success'] != true) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(result['message'] ?? '登录失败')),
           );
         }
+        return;
+      }
+
+      // 登录成功，验证 data 字段是否存在
+      if (result['data'] == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('登录响应数据格式错误')),
+          );
+        }
+        return;
+      }
+
+      final token = result['data']['token'] as String;
+      final user = result['data']['user'] as Map<String, dynamic>;
+
+      final tokenPreview = token.length > 30 ? '${token.substring(0, 30)}...' : token;
+      print('[Login] Saving token: $tokenPreview...');
+      // 保存Token和用户信息
+      await StorageService.setAuthToken(token);
+      await StorageService.setUserId(user['id'] as String);
+      await StorageService.setUserPhone(user['phone'] as String);
+      await StorageService.setLoggedIn(true);
+      await StorageService.setLoginType('password');
+
+      // 保存完整的用户信息（包括token）
+      await StorageService.saveUserInfo({
+        'id': user['id'],
+        'phone': user['phone'],
+        'nickname': user['nickname'] ?? '',
+        'avatar': user['avatar'],
+        'token': token,
+      });
+
+      // 验证保存是否成功
+      final savedToken = await StorageService.getAuthToken();
+      final savedTokenPreview = savedToken != null && savedToken.length > 30
+          ? '${savedToken.substring(0, 30)}...'
+          : (savedToken ?? 'null');
+      print('[Login] After save, get saved token: $savedTokenPreview...');
+
+      // 设置ApiService的Token
+      ApiService().setAuthToken(token);
+
+      if (mounted) {
+        final homeStyle = await StorageService.getHomeStyle();
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          homeStyle == 'classic' ? AppRoutes.home : AppRoutes.homeImmersive,
+          (route) => false,
+        );
       }
     } on DioException catch (e) {
       String message = '网络错误，请稍后重试';

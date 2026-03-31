@@ -54,6 +54,15 @@ router.put('/:id/shares/:userId', authenticate, async (req: Request, res: Respon
 });
 */
 
+// 提供设备共享计数接口，返回0
+router.get('/:id/shares/count', authenticate, async (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    count: 0,
+    message: '设备共享功能暂不可用'
+  });
+});
+
 // 提供一个简单的响应,说明功能暂不可用
 router.get('/', authenticate, async (req: Request, res: Response) => {
   res.json({

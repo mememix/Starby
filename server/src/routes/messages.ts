@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
+import { manualCheckBattery } from '../services/batteryMonitor';
 
 const router = Router();
 
@@ -705,6 +706,23 @@ router.delete('/clear-all', authenticate, async (req: Request, res: Response, ne
       success: true,
       message: `已清除${result.count}条消息`,
       data: { count: result.count }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/messages/check-battery
+ * 手动触发电池检查（用于测试）
+ */
+router.post('/check-battery', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const count = await manualCheckBattery();
+    res.json({
+      success: true,
+      message: `电池检查完成，共创建 ${count} 条低电量告警消息`,
+      data: { count }
     });
   } catch (error) {
     next(error);

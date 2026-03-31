@@ -345,6 +345,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 debugPrint('[LoginScreen] Response: $response');
                 debugPrint('[LoginScreen] Response type: ${response.runtimeType}');
 
+                // 先检查登录是否成功
+                if (response['success'] != true) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(response['message'] ?? '登录失败')),
+                    );
+                  }
+                  return;
+                }
+
+                // 检查 data 字段是否存在
                 if (!response.containsKey('data') || response['data'] == null) {
                   throw Exception('响应中缺少data字段');
                 }
@@ -543,6 +554,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 debugPrint('[LoginScreen] Device login response: $response');
                 debugPrint('[LoginScreen] Response type: ${response.runtimeType}');
 
+                // 先检查登录是否成功
+                if (response['success'] != true) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(response['message'] ?? '登录失败')),
+                    );
+                  }
+                  return;
+                }
+
+                // 检查 data 字段是否存在
                 if (!response.containsKey('data') || response['data'] == null) {
                   throw Exception('响应中缺少data字段');
                 }

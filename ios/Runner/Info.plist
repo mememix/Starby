@@ -17,7 +17,9 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>需要访问您的位置以显示和追踪设备</string>
 	<key>CFBundleDisplayName</key>
-	<string>Xinghu App</string>
+	<string>星护伙伴</string>
+	<key>CFBundleName</key>
+	<string>Starby</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

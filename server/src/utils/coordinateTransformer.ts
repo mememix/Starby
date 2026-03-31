@@ -6,14 +6,15 @@
 /**
  * 基于狗子（设备2000）的正确纠偏值
  *
- * 狗子原始坐标: 39.874616, 116.31596
- * GCJ-02转换后: 39.875903, 116.320643
- * 狗子正确坐标: 39.876168, 116.321568 (北京市西城区北京西站南路80号1号楼)
- * 计算偏移: (39.876168 - 39.875903 = 0.000265, 116.321568 - 116.320643 = 0.000925)
+ * 狗子原始坐标: 39.874636, 116.315144
+ * 偏移后WGS-84: 39.874636, 116.316844
+ * GCJ-02转换后: 39.875925, 116.321529
+ * 目标地址: 北京市西城区广安门外街道北京西站南路80号院茗筑大厦
+ * 计算偏移: (0.000000, 116.316844 - 116.315144 = 0.001700)
  */
 const UNIFIED_OFFSET = {
-  latitude: 0.000265,   // 纬度偏移（基于狗子验证）
-  longitude: 0.000925    // 经度偏移（基于狗子验证）
+  latitude: 0.000000,   // 纬度偏移（基于狗子验证）
+  longitude: 0.001700    // 经度偏移（基于狗子验证）
 };
 
 /**
@@ -110,8 +111,10 @@ function applyUnifiedOffset(lat: number, lng: number): { lat: number; lng: numbe
 
 /**
  * 统一坐标转换流程：
- * 1. WGS-84 转 GCJ-02
- * 2. 应用狗子纠偏算法的统一偏移
+ * 1. 应用狗子纠偏算法的统一偏移（在WGS-84坐标系中校正GPS误差）
+ * 2. WGS-84 转 GCJ-02
+ *
+ * 注意：先偏移再转换，因为设备GPS误差是在WGS-84空间中的
  *
  * @param latitude 原始纬度
  * @param longitude 原始经度
@@ -155,8 +158,11 @@ export function transformCoordinate(
     return null;
   }
 
-  // 第一步：WGS-84 转 GCJ-02
-  const gcj02 = transformWGS84ToGCJ02(lat, lng);
+  // 第一步：在WGS-84坐标系中应用统一偏移（校正GPS系统误差）
+  const offseted = applyUnifiedOffset(lat, lng);
+
+  // 第二步：将校正后的WGS-84坐标转换为GCJ-02
+  const gcj02 = transformWGS84ToGCJ02(offseted.lat, offseted.lng);
 
   // 检查转换结果是否有效
   if (!gcj02 || typeof gcj02.lat !== 'number' || typeof gcj02.lng !== 'number') {
@@ -167,14 +173,11 @@ export function transformCoordinate(
     };
   }
 
-  // 第二步：应用统一偏移（狗子纠偏算法）
-  const corrected = applyUnifiedOffset(gcj02.lat, gcj02.lng);
-
-  console.log(`[CoordinateTransform] 原始坐标: (${lat.toFixed(6)}, ${lng.toFixed(6)}) -> GCJ-02: (${gcj02.lat.toFixed(6)}, ${gcj02.lng.toFixed(6)}) -> 纠偏后: (${corrected.lat.toFixed(6)}, ${corrected.lng.toFixed(6)})`);
+  console.log(`[CoordinateTransform] 原始WGS-84: (${lat.toFixed(6)}, ${lng.toFixed(6)}) -> 应用偏移: (${offseted.lat.toFixed(6)}, ${offseted.lng.toFixed(6)}) -> GCJ-02: (${gcj02.lat.toFixed(6)}, ${gcj02.lng.toFixed(6)})`);
 
   return {
-    latitude: corrected.lat,
-    longitude: corrected.lng
+    latitude: gcj02.lat,
+    longitude: gcj02.lng
   };
 }
 

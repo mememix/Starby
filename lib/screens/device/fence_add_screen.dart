@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../constants/colors.dart';
+import '../../config/app_config.dart';
 import '../../models/device.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
@@ -400,6 +401,9 @@ class _FenceAddScreenState extends State<FenceAddScreen> {
                       _latitude ?? 39.909187,
                       _longitude ?? 116.397451,
                     ),
+                    deviceLocation: _device?.latitude != null && _device?.longitude != null
+                        ? LatLng(_device!.latitude!.toDouble(), _device!.longitude!.toDouble())
+                        : null,
                     onTap: (position) {
                       setState(() {
                         _latitude = position.latitude;
@@ -489,7 +493,7 @@ class _FenceAddScreenState extends State<FenceAddScreen> {
 
     try {
       // 调用高德地图POI搜索API
-      final url = 'https://restapi.amap.com/v3/place/text?key=YOUR_AMAP_KEY&keywords=$query&city=北京&output=json';
+      final url = 'https://restapi.amap.com/v3/place/text?key=${AppConfig.AMAP_WEB_KEY}&keywords=$query&citylimit=1&children=1&offset=10&page=1&extensions=all';
 
       final dio = Dio();
       final response = await dio.get(url);
@@ -498,9 +502,13 @@ class _FenceAddScreenState extends State<FenceAddScreen> {
         final pois = response.data['pois'] as List;
         final results = pois.take(5).map((poi) {
           final location = (poi['location'] as String).split(',');
+          final pname = poi['pname'] ?? '';
+          final cityname = poi['cityname'] ?? '';
+          final adname = poi['adname'] ?? '';
+          final address = poi['address'] ?? '$pname$cityname$adname';
           return {
             'name': poi['name'],
-            'address': poi['address'] ?? poi['pname'] + poi['cityname'],
+            'address': address,
             'lat': double.parse(location[1]),
             'lng': double.parse(location[0]),
           };
@@ -513,22 +521,19 @@ class _FenceAddScreenState extends State<FenceAddScreen> {
           });
         }
       } else {
-        throw Exception('搜索失败');
+        throw Exception('搜索失败: ${response.data['info']}');
       }
     } catch (e) {
       debugPrint('搜索地点失败: $e');
-      // 如果API调用失败，返回模拟数据
-      await Future.delayed(const Duration(milliseconds: 300));
-      final mockResults = [
-        {'name': query, 'address': '北京市朝阳区xxx路xxx号', 'lat': 39.909187, 'lng': 116.397451},
-        {'name': '$query 广场', 'address': '北京市海淀区xxx广场', 'lat': 39.919187, 'lng': 116.407451},
-      ];
-
+      // 如果API调用失败，不返回模拟数据，显示错误提示
       if (mounted) {
         setState(() {
-          _searchResults = mockResults;
+          _searchResults = [];
           _isSearching = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('搜索失败，请稍后重试：$e')),
+        );
       }
     }
   }

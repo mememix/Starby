@@ -24,6 +24,7 @@ import 'screens/message/message_screen.dart';
 import 'screens/message/message_detail_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/profile_edit_screen.dart';
+import 'screens/checkin/checkin_screen.dart';
 import 'screens/debug/debug_storage_screen.dart';
 import 'screens/settings/about_screen.dart';
 import 'screens/settings/account_security_screen.dart';
@@ -62,6 +63,7 @@ class AppRoutes {
   static const String fenceEdit = '/device/fence/edit';
   static const String deviceShareList = '/device/share-list';
   static const String trackReplay = '/device/track-replay';
+  static const String checkin = '/checkin';
 
   // 路由表（使用 onGenerateRoute 处理参数传递）
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -162,6 +164,8 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const HelpScreen());
       case settingsTheme:
         return MaterialPageRoute(builder: (_) => const ThemeSettingsScreen());
+      case checkin:
+        return MaterialPageRoute(builder: (_) => const CheckinScreen());
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
@@ -201,5 +205,6 @@ class AppRoutes {
     settingsNotification: (context) => const NotificationSettingsScreen(),
     settingsHelp: (context) => const HelpScreen(),
     settingsTheme: (context) => const ThemeSettingsScreen(),
+    checkin: (context) => const CheckinScreen(),
   };
 }

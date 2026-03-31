@@ -32,7 +32,7 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
     if (avatarUrl == null || avatarUrl.isEmpty) {
       return null;
     }
-    
+
     // 检查是否为data:image/开头的base64数据URI
     if (avatarUrl.startsWith('data:image/') && avatarUrl.contains(';base64,')) {
       try {
@@ -48,8 +48,19 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
         return null;
       }
     } else {
+      // 如果是相对路径（以 /uploads/ 开头），拼接服务器地址
+      String finalUrl = avatarUrl;
+      if (avatarUrl.startsWith('/uploads/')) {
+        // 获取API基础URL（静态属性）
+        final baseUrl = ApiService.baseUrl;
+        // 移除baseUrl末尾的 /api 部分
+        final serverUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
+        finalUrl = '$serverUrl$avatarUrl';
+        debugPrint('[HomeImmersiveScreen] 拼接头像URL: $finalUrl');
+      }
+
       // 如果是普通的网络URL，使用NetworkImage
-      return NetworkImage(avatarUrl);
+      return NetworkImage(finalUrl);
     }
   }
 
@@ -109,17 +120,15 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
           if (location.lat != 0.0 && location.lng != 0.0) {
             // 位置API返回有效经纬度，但地址和电量可能为空
             // 合并设备对象中的地址和电量信息
-            // 应用设备特定的坐标校正
             debugPrint('[HomeImmersive] 设备 ${device.id}: 坐标(${location.lat}, ${location.lng})');
             debugPrint('[HomeImmersive] 设备 ${device.id}: API地址="${location.address}", 设备地址="${device.address}"');
 
-            // 应用设备特定的坐标校正
-            final corrected = device.deviceCorrectedCoordinates ??
-                {'latitude': location.lat, 'longitude': location.lng};
-            final finalLat = corrected['latitude']!;
-            final finalLng = corrected['longitude']!;
+            // 注意：后端API已经对坐标进行了转换（WGS-84 -> GCJ-02 + 统一偏移）
+            // 前端直接使用后端返回的坐标，不再进行二次转换
+            final finalLat = location.lat;
+            final finalLng = location.lng;
 
-            debugPrint('[HomeImmersive] 应用坐标校正: (${location.lat}, ${location.lng}) -> ($finalLat, $finalLng)');
+            debugPrint('[HomeImmersive] 使用后端转换后坐标: ($finalLat, $finalLng)');
 
             // 优先使用API的经纬度（最新数据），但使用设备表的地址（轨迹表地址通常为null）
             final mergedLocation = Location(
@@ -141,11 +150,11 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
               debugPrint('[HomeImmersive] Merged device battery for ${device.id}');
             }
           } else if (device.latitude != null && device.longitude != null) {
-            // 位置API返回无效数据，使用设备对象中的位置信息作为后备（应用设备特定校正）
+            // 位置API返回无效数据，使用设备对象中的位置信息作为后备（应用统一坐标校正）
             debugPrint('[HomeImmersive] API returned (0,0), using device location for ${device.id}');
 
-            // 应用设备特定的坐标校正
-            final corrected = device.deviceCorrectedCoordinates ??
+            // 应用统一坐标校正（所有设备使用统一偏移）
+            final corrected = device.correctedCoordinates ??
                 {'latitude': device.latitude!, 'longitude': device.longitude!};
             final finalLat = corrected['latitude']!;
             final finalLng = corrected['longitude']!;
@@ -167,12 +176,12 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
         } catch (e) {
           // 某个设备位置获取失败不影响其他设备
           debugPrint('Failed to load location for device ${device.id}: $e');
-          // 尝试使用设备对象中的位置信息作为后备（应用设备特定校正）
+          // 尝试使用设备对象中的位置信息作为后备（应用统一坐标校正）
           if (device.latitude != null && device.longitude != null) {
             debugPrint('[HomeImmersive] Using device location as fallback for ${device.id}');
 
-            // 应用设备特定的坐标校正
-            final corrected = device.deviceCorrectedCoordinates ??
+            // 应用统一坐标校正（所有设备使用统一偏移）
+            final corrected = device.correctedCoordinates ??
                 {'latitude': device.latitude!, 'longitude': device.longitude!};
             final finalLat = corrected['latitude']!;
             final finalLng = corrected['longitude']!;

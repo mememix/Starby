@@ -15,7 +15,7 @@ class AppConfig {
       case Environment.dev:
         return const String.fromEnvironment(
           'API_BASE_URL',
-          defaultValue: 'http://192.168.1.8:3000/api',
+          defaultValue: 'http://192.168.1.5:3000/api',
         );
       case Environment.prod:
         return const String.fromEnvironment(
@@ -30,7 +30,7 @@ class AppConfig {
       case Environment.dev:
         return const String.fromEnvironment(
           'WS_BASE_URL',
-          defaultValue: 'ws://192.168.1.8:3000/ws/location',
+          defaultValue: 'ws://192.168.1.5:3000/ws/location',
         );
       case Environment.prod:
         return const String.fromEnvironment(
