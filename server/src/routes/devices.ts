@@ -150,7 +150,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
           bindDate: device.bindDate,
           uniqueId: device.uniqueId,
           locationInfo: device.locationInfo,
-          address: device.address,
+          // address: device.address, // 移除地址字段，由前端实时逆地理编码
           longitude: transformed?.longitude ?? device.longitude,
           latitude: transformed?.latitude ?? device.latitude,
           snCode: device.snCode,
@@ -661,7 +661,7 @@ router.get('/:id/location', authenticate, async (req: Request, res: Response, ne
         deviceCode: location.device_code,
         longitude: transformed?.longitude?.toString() ?? location.longitude?.toString(),
         latitude: transformed?.latitude?.toString() ?? location.latitude?.toString(),
-        address: location.address,
+        // address: location.address, // 移除地址字段，由前端实时逆地理编码
         recordTime: location.record_time,
         speed: location.speed?.toString(),
         direction: location.direction,
@@ -696,7 +696,11 @@ router.get('/:id/location', authenticate, async (req: Request, res: Response, ne
 router.get('/:id/history', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { startTime, endTime, limit = 100 } = req.query;
+    const { startTime, endTime, limit = 10000, page = 1 } = req.query;
+
+    console.log('[History] 查询历史轨迹 - 设备ID:', id);
+    console.log('[History] 时间范围 - startTime:', startTime, 'endTime:', endTime);
+    console.log('[History] 分页参数 - limit:', limit, 'page:', page);
 
     // 验证设备是否属于当前用户
     const device = await prisma.device.findFirst({
@@ -711,34 +715,68 @@ router.get('/:id/history', authenticate, async (req: Request, res: Response, nex
     }
 
     // 构建查询条件
-    const where: any = { deviceId: BigInt(id) };
+    let whereClause = 'device_id = ?';
+    const params: any[] = [BigInt(id)];
+
     if (startTime || endTime) {
-      where.location_time = {};
       if (startTime) {
-        where.location_time.gte = new Date(startTime as string);
+        // 直接使用字符串比较，不进行时区转换
+        // 数据库存储的是北京时间，前端发送的也是北京时间
+        whereClause += ' AND location_time >= ?';
+        params.push(startTime as string);
+        console.log('[History] startTime:', startTime);
       }
       if (endTime) {
-        where.location_time.lte = new Date(endTime as string);
+        whereClause += ' AND location_time <= ?';
+        params.push(endTime as string);
+        console.log('[History] endTime:', endTime);
       }
     }
 
-    // 查询历史位置
-    const history = await prisma.location.findMany({
-      where,
-      orderBy: { location_time: 'desc' },
-      take: Math.min(Number(limit), 1000)
-    });
+    // 使用原生 SQL 查询，避免 Prisma 的时区转换问题
+    const sql = `
+      SELECT * FROM lot_track
+      WHERE ${whereClause}
+      ORDER BY location_time ASC
+      LIMIT ? OFFSET ?
+    `;
+
+    // 查询总数
+    const countSql = `
+      SELECT COUNT(*) as total FROM lot_track
+      WHERE ${whereClause}
+    `;
+
+    const history = await prisma.$queryRawUnsafe(sql, ...params, Number(limit), (Number(page) - 1) * Number(limit));
+
+    const countResult: any[] = await prisma.$queryRawUnsafe(countSql, ...params);
+    const total = Number(countResult[0].total);
+
+    console.log('[History] 返回数据量:', history.length);
+    if (history.length > 0) {
+      console.log('[History] 第一个点时间:', history[0].location_time);
+      console.log('[History] 最后一个点时间:', history[history.length - 1].location_time);
+    }
 
     // 对历史位置应用统一坐标转换（WGS-84 -> GCJ-02 + 统一偏移）
-    const transformedHistory = history.map(loc => {
+    const transformedHistory = history.map((loc: any) => {
       const transformed = transformCoordinate(
         loc.latitude,
         loc.longitude
       );
 
+      // 返回UTC时间字符串（带Z），前端用 .toLocal() 转换为本地时间
+      // 数据库存储的是北京时间，需要转换为UTC
+      const formatUTCDate = (date: Date | null | undefined) => {
+        if (!date) return null;
+        // 将北京时间转换为UTC时间
+        const utcTime = new Date(date.getTime() - 8 * 60 * 60 * 1000);
+        return utcTime.toISOString();
+      };
+
       return {
-        trackId: loc.trackId.toString(),
-        deviceId: loc.deviceId.toString(),
+        trackId: loc.track_id?.toString(),
+        deviceId: loc.device_id?.toString(),
         deviceCode: loc.device_code,
         longitude: transformed?.longitude?.toString() ?? loc.longitude?.toString(),
         latitude: transformed?.latitude?.toString() ?? loc.latitude?.toString(),
@@ -751,7 +789,7 @@ router.get('/:id/history', authenticate, async (req: Request, res: Response, nex
         createBy: loc.create_by,
         updateTime: loc.update_time,
         updateBy: loc.update_by,
-        locationTime: loc.location_time,
+        locationTime: formatUTCDate(loc.location_time as any),
         altitude: loc.altitude,
         batteryLevel: loc.battery_level,
         signalStrength: loc.signal_strength
@@ -762,7 +800,13 @@ router.get('/:id/history', authenticate, async (req: Request, res: Response, nex
       success: true,
       data: {
         deviceId: id,
-        history: transformedHistory
+        history: transformedHistory,
+        pagination: {
+          total,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: Math.ceil(total / Number(limit))
+        }
       }
     });
   } catch (error) {

@@ -48,6 +48,16 @@ class Location {
 
   // 从JSON解析
   factory Location.fromJson(Map<String, dynamic> json) {
+    // 解析时间：后端返回UTC时间字符串（带Z），转换为本地时间
+    DateTime parsedTime;
+    if (json['locationTime'] != null) {
+      parsedTime = DateTime.parse(json['locationTime']).toLocal();
+    } else if (json['timestamp'] != null) {
+      parsedTime = DateTime.parse(json['timestamp']).toLocal();
+    } else {
+      parsedTime = DateTime.now();
+    }
+
     return Location(
       id: json['trackId'] ?? json['id'] ?? '',
       deviceId: json['deviceId']?.toString() ?? '',
@@ -56,9 +66,7 @@ class Location {
       address: json['address'],
       accuracy: _parseDouble(json['accuracy']),
       battery: _parseInt(json['batteryLevel'] ?? json['battery']),
-      timestamp: json['locationTime'] != null
-          ? DateTime.parse(json['locationTime'])
-          : (json['timestamp'] != null ? DateTime.parse(json['timestamp']) : DateTime.now()),
+      timestamp: parsedTime,
       type: json['type'] ?? 'gps',
     );
   }

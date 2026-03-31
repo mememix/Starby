@@ -195,10 +195,64 @@ class ApiService {
     }
   }
 
-  // 上传用户头像
+  // ==================== 文件上传相关 ====================
+
+  // 上传用户头像（使用multipart/form-data）
+  Future<Map<String, dynamic>> uploadUserAvatarFile(String imagePath) async {
+    try {
+      final formData = FormData.fromMap({
+        'avatar': await MultipartFile.fromFile(imagePath),
+      });
+
+      final response = await _dio.post(
+        '/upload/user-avatar',
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+        ),
+      );
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // 上传设备头像（使用multipart/form-data）
+  Future<Map<String, dynamic>> uploadDeviceAvatarFile(String deviceId, String imagePath) async {
+    try {
+      final formData = FormData.fromMap({
+        'avatar': await MultipartFile.fromFile(imagePath),
+      });
+
+      final response = await _dio.post(
+        '/upload/device-avatar/$deviceId',
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+        ),
+      );
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // 上传用户头像（使用base64字符串 - 旧接口，保留兼容）
   Future<Map<String, dynamic>> uploadUserAvatar(String avatarUrl) async {
     try {
       final response = await _dio.put('/auth/me', data: {
+        'avatar': avatarUrl,
+      });
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // 上传设备头像（使用base64字符串 - 旧接口，保留兼容）
+  Future<Map<String, dynamic>> uploadDeviceAvatar(String deviceId, String avatarUrl) async {
+    try {
+      final response = await _dio.put('/devices/$deviceId', data: {
         'avatar': avatarUrl,
       });
       return response.data;
@@ -435,10 +489,12 @@ class ApiService {
       };
       
       if (start != null) {
-        queryParams['startTime'] = start.toIso8601String();
+        // 格式化为本地时间字符串（不带Z），因为数据库存储的是北京时间
+        queryParams['startTime'] = _formatLocalDateTime(start);
       }
       if (end != null) {
-        queryParams['endTime'] = end.toIso8601String();
+        // 格式化为本地时间字符串（不带Z），因为数据库存储的是北京时间
+        queryParams['endTime'] = _formatLocalDateTime(end);
       }
 
       final response = await _dio.get(
@@ -463,18 +519,6 @@ class ApiService {
         '/devices/$deviceId',
         data: data,
       );
-      return response.data;
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  // 上传设备头像
-  Future<Map<String, dynamic>> uploadDeviceAvatar(String deviceId, String avatarUrl) async {
-    try {
-      final response = await _dio.put('/devices/$deviceId', data: {
-        'avatar': avatarUrl,
-      });
       return response.data;
     } catch (e) {
       rethrow;
@@ -791,5 +835,99 @@ class ApiService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  // ==================== 打卡相关 ====================
+
+  // 获取打卡状态
+  Future<Map<String, dynamic>> getCheckinStatus() async {
+    try {
+      final response = await _dio.get('/checkin/status');
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // 执行打卡
+  Future<Map<String, dynamic>> performCheckin({
+    double? latitude,
+    double? longitude,
+    String? address,
+    String? deviceCode,
+  }) async {
+    try {
+      final response = await _dio.post('/checkin', data: {
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
+        if (address != null) 'address': address,
+        if (deviceCode != null) 'device_code': deviceCode,
+      });
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // 获取打卡历史
+  Future<Map<String, dynamic>> getCheckinHistory({
+    int page = 1,
+    int limit = 20,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/checkin/history',
+        queryParameters: {
+          'page': page,
+          'limit': limit,
+        },
+      );
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // 获取积分记录
+  Future<Map<String, dynamic>> getPointsRecords({
+    int page = 1,
+    int limit = 20,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/checkin/points',
+        queryParameters: {
+          'page': page,
+          'limit': limit,
+        },
+      );
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // 获取打卡统计
+  Future<Map<String, dynamic>> getCheckinStats() async {
+    try {
+      final response = await _dio.get('/checkin/stats');
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // ==================== 辅助方法 ====================
+
+  // 格式化本地时间为字符串（不带时区信息）
+  // 用于发送到后端的查询参数，因为数据库存储的是北京时间
+  String _formatLocalDateTime(DateTime dateTime) {
+    final year = dateTime.year;
+    final month = dateTime.month.toString().padLeft(2, '0');
+    final day = dateTime.day.toString().padLeft(2, '0');
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final second = dateTime.second.toString().padLeft(2, '0');
+    return '$year-$month-${day}T$hour:$minute:$second';
   }
 }
