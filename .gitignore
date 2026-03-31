@@ -91,3 +91,6 @@ server.py
 frpc.toml
 frps.toml
 *.toml
+
+# DevTools configuration (IDE specific)
+devtools_options.yaml
