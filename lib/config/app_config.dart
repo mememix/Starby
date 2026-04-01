@@ -42,10 +42,10 @@ class AppConfig {
 
   // 高德地图配置
   static String get AMAP_ANDROID_KEY {
-    return const String.fromEnvironment(
-      'AMAP_ANDROID_KEY',
-      defaultValue: '827fcab330d4be1efe82a3bb995bac84',
-    );
+        return const String.fromEnvironment(
+          'AMAP_ANDROID_KEY',
+          defaultValue: 'your-amap-android-key-here',
+        );
   }
 
   static String get AMAP_IOS_KEY {
@@ -57,10 +57,10 @@ class AppConfig {
 
   // 高德Web服务Key(用于逆地理编码等Web API)
   static String get AMAP_WEB_KEY {
-    return const String.fromEnvironment(
-      'AMAP_WEB_KEY',
-      defaultValue: 'eea1694fb0a9cad500e605eaa8e3dffe',
-    );
+        return const String.fromEnvironment(
+          'AMAP_WEB_KEY',
+          defaultValue: 'your-amap-web-key-here',
+        );
   }
 
   // 其他配置

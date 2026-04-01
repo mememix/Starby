@@ -25,7 +25,6 @@ import 'screens/message/message_detail_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/profile_edit_screen.dart';
 import 'screens/checkin/checkin_screen.dart';
-import 'screens/debug/debug_storage_screen.dart';
 import 'screens/settings/about_screen.dart';
 import 'screens/settings/account_security_screen.dart';
 import 'screens/settings/notification_settings_screen.dart';
@@ -49,7 +48,6 @@ class AppRoutes {
   static const String messageDetail = '/message/detail';
   static const String profile = '/profile';
   static const String profileEdit = '/profile/edit';
-  static const String debugStorage = '/debug/storage';
   static const String history = '/device/history';
   static const String fence = '/device/fence';
   static const String historyReplay = '/device/history/replay';
@@ -131,8 +129,6 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const ProfileScreen());
       case profileEdit:
         return MaterialPageRoute(builder: (_) => const ProfileEditScreen());
-      case debugStorage:
-        return MaterialPageRoute(builder: (_) => const DebugStorageScreen());
       case fenceAdd:
         final deviceId = settings.arguments as String?;
         return MaterialPageRoute(builder: (_) => FenceAddScreen(deviceId: deviceId));
@@ -195,7 +191,6 @@ class AppRoutes {
     messageDetail: (context) => const MessageDetailScreen(),
     profile: (context) => const ProfileScreen(),
     profileEdit: (context) => const ProfileEditScreen(),
-    debugStorage: (context) => const DebugStorageScreen(),
     fenceAdd: (context) => const FenceAddScreen(),
     fenceEdit: (context) => const FenceEditScreen(),
     deviceShareList: (context) => const PartnerShareListScreen(),
