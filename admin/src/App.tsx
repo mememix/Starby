@@ -8,7 +8,7 @@ import Settings from './pages/Settings';
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/starby-admin">
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<AdminLayout />}>

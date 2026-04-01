@@ -1,7 +1,13 @@
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
+
+interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  message?: string;
+}
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/starby-api',
   timeout: 10000
 });
 
@@ -19,11 +25,11 @@ api.interceptors.request.use(
 
 // 响应拦截器
 api.interceptors.response.use(
-  (response) => response.data,
+  (response: AxiosResponse<ApiResponse>) => response.data as any,
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      window.location.href = '/starby-admin/login';
     }
     return Promise.reject(error);
   }

@@ -118,7 +118,7 @@ export default function Dashboard() {
               style={{ width: 250 }}
               prefix={<SearchOutlined />}
             />
-            <Button type="primary" onClick={() => window.location.href = '/devices'}>
+            <Button type="primary" onClick={() => window.location.href = '/starby-admin/devices'}>
               查看全部
             </Button>
           </Space>

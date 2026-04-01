@@ -6,8 +6,8 @@ import 'package:flutter/foundation.dart';
 enum Environment { dev, prod }
 
 class AppConfig {
-  // 当前环境: 开发环境
-  static const Environment ENV = Environment.dev;
+  // 当前环境: 生产环境
+  static const Environment ENV = Environment.prod;
 
   // 环境配置
   static String get API_BASE_URL {
@@ -20,7 +20,7 @@ class AppConfig {
       case Environment.prod:
         return const String.fromEnvironment(
           'API_BASE_URL',
-          defaultValue: 'https://api.starby.com/api',
+          defaultValue: 'http://180.76.100.61:3000/api',
         );
     }
   }
@@ -35,7 +35,7 @@ class AppConfig {
       case Environment.prod:
         return const String.fromEnvironment(
           'WS_BASE_URL',
-          defaultValue: 'wss://api.starby.com/ws/location',
+          defaultValue: 'ws://180.76.100.61:3000/ws/location',
         );
     }
   }
