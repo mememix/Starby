@@ -135,7 +135,6 @@ export class JT808Storage {
         select: {
           deviceId: true,
           deviceName: true,
-          userId: true,
           status: true,
         },
       });
