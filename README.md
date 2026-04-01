@@ -393,6 +393,12 @@ flutter build ios --release
 
 检查 JT808 端口（默认 7100）是否开放，以及设备的网络配置。
 
+### 5. 管理后台
+- 地址 http://admin.xinghu.tech/starby-admin
+- 账户名：admin
+- 密码：admin123
+
+
 ## 联系方式
 
 - 项目名称: Starby
