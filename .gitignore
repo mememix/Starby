@@ -94,3 +94,12 @@ frps.toml
 
 # DevTools configuration (IDE specific)
 devtools_options.yaml
+
+# Server uploads (user uploaded files)
+server/uploads/
+
+# Test and debug files
+*.test.ts
+*-test.*
+*-simple.*
+temp_*
