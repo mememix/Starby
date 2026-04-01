@@ -15,7 +15,7 @@ dotenv.config();
 const router = Router();
 
 // 本地存储目录
-const LOCAL_STORAGE_BASE = '/Users/mememix/CodeBuddy/Starby/server/uploads';
+const LOCAL_STORAGE_BASE = process.env.LOCAL_STORAGE_BASE || './uploads';
 
 // 上传方式配置: 'local' | 'ssh' | 'http'
 const UPLOAD_METHOD = process.env.UPLOAD_METHOD || 'http';

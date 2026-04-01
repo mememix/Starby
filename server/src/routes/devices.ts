@@ -2,12 +2,20 @@ import { Router, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
 import dotenv from 'dotenv';
+import { Decimal } from '@prisma/client/runtime/library';
 import { compressImage } from '../utils/imageCompressor';
 import { transformCoordinate } from '../utils/coordinateTransformer';
 
 dotenv.config();
 
 const router = Router();
+
+/** Convert Prisma Decimal to number or null */
+function toNum(val: Decimal | string | number | null | undefined): number | string | null | undefined {
+  if (val == null) return null;
+  if (val instanceof Decimal) return val.toNumber();
+  return val;
+}
 
 // 硬编码确保一致
 const JWT_SECRET: jwt.Secret = 'your-super-secret-jwt-key';
@@ -135,8 +143,8 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 
           // 应用统一坐标转换（WGS-84 -> GCJ-02 + 统一偏移）
           const transformed = transformCoordinate(
-            device.latitude,
-            device.longitude
+            toNum(device.latitude),
+            toNum(device.longitude)
           );
 
           return {
@@ -240,8 +248,8 @@ router.get('/unbound', authenticate, async (req: Request, res: Response, next: N
         devices: devices.map(device => {
           // 应用统一坐标转换（WGS-84 -> GCJ-02 + 统一偏移）
           const transformed = transformCoordinate(
-            device.latitude,
-            device.longitude
+            toNum(device.latitude),
+            toNum(device.longitude)
           );
 
           return {
@@ -512,8 +520,8 @@ router.get('/:id', authenticate, async (req: Request, res: Response, next: NextF
 
     // 应用统一坐标转换（WGS-84 -> GCJ-02 + 统一偏移）
     const transformed = transformCoordinate(
-      device.latitude,
-      device.longitude
+      toNum(device.latitude),
+      toNum(device.longitude)
     );
 
     res.json({
@@ -651,8 +659,8 @@ router.get('/:id/location', authenticate, async (req: Request, res: Response, ne
     let correctedLocation = null;
     if (location) {
       const transformed = transformCoordinate(
-        location.latitude,
-        location.longitude
+        toNum(location.latitude),
+        toNum(location.longitude)
       );
 
       correctedLocation = {
@@ -747,7 +755,7 @@ router.get('/:id/history', authenticate, async (req: Request, res: Response, nex
       WHERE ${whereClause}
     `;
 
-    const history = await prisma.$queryRawUnsafe(sql, ...params, Number(limit), (Number(page) - 1) * Number(limit));
+    const history: any[] = await prisma.$queryRawUnsafe(sql, ...params, Number(limit), (Number(page) - 1) * Number(limit));
 
     const countResult: any[] = await prisma.$queryRawUnsafe(countSql, ...params);
     const total = Number(countResult[0].total);
@@ -1573,7 +1581,7 @@ router.post('/:id/upload-avatar', authenticate, async (req: Request, res: Respon
     }
 
     // 检查是否包含文件（兼容multer未配置的情况）
-    if (!req.files || typeof req.files !== 'object' || Object.keys(req.files).length === 0) {
+    if (!(req as any).files || typeof (req as any).files !== 'object' || Object.keys((req as any).files).length === 0) {
       return res.status(400).json({
         success: false,
         message: '没有上传文件'

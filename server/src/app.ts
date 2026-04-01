@@ -130,7 +130,7 @@ app.use('/api/remote-upload', remoteUploadRoutes);
 console.log('  ✅ /api/remote-upload    - 远程文件上传API');
 
 // ==================== 静态文件服务 ====================
-const uploadsPath = '/Users/mememix/CodeBuddy/Starby/server/uploads';
+const uploadsPath = process.env.LOCAL_STORAGE_BASE || './uploads';
 app.use('/uploads', express.static(uploadsPath));
 console.log('  ✅ /uploads              - 本地文件存储');
 

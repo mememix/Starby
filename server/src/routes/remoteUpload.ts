@@ -11,7 +11,7 @@ import fs from 'fs';
 const router = Router();
 
 // 上传目录配置
-const REMOTE_UPLOAD_BASE = '/Users/mememix/CodeBuddy/Starby/server/uploads/remote';
+const REMOTE_UPLOAD_BASE = process.env.REMOTE_UPLOAD_BASE || './uploads/remote';
 
 // 确保目录存在
 if (!fs.existsSync(REMOTE_UPLOAD_BASE)) {

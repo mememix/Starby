@@ -133,7 +133,7 @@ export class JT808Storage {
       const device = await prisma.device.findUnique({
         where: { deviceCode },
         select: {
-          id: true,
+          deviceId: true,
           deviceName: true,
           userId: true,
           status: true,

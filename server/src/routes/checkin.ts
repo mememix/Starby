@@ -141,7 +141,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response, next: Ne
         (${userId}, NOW(), 'DAILY', ${longitude || null}, ${latitude || null}, ${continuousDays}, ${pointsEarned}, 0, ${device_code || null}, ${address || null}, NOW(), NOW())
     ` as any[];
 
-    const checkinId = (checkin as any[]).insertId;
+    const checkinId = (checkin as any).insertId;
 
     // 更新或创建用户积分记录
     let userPoints = await prisma.$queryRaw`

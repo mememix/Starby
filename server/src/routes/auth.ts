@@ -971,7 +971,7 @@ router.post('/upload-avatar', authenticateToken, async (req: Request, res: Respo
     const userId = req.userId;
 
     // 检查是否包含文件（兼容multer未配置的情况）
-    if (!req.files || typeof req.files !== 'object' || Object.keys(req.files).length === 0) {
+    if (!(req as any).files || typeof (req as any).files !== 'object' || Object.keys((req as any).files).length === 0) {
       // 如果没有文件，检查是否有base64数据
       if (req.body.avatar) {
         // 使用base64数据更新头像
