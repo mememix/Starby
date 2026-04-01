@@ -20,7 +20,7 @@ class AppConfig {
       case Environment.prod:
         return const String.fromEnvironment(
           'API_BASE_URL',
-          defaultValue: 'http://192.168.1.8:3000/api',
+          defaultValue: 'http://180.76.100.61:3000/api',
         );
     }
   }
