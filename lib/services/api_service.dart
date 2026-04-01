@@ -185,6 +185,16 @@ class ApiService {
     }
   }
 
+  // 删除/注销账户
+  Future<Map<String, dynamic>> deleteAccount() async {
+    try {
+      final response = await _dio.delete('/auth/account');
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   // 更新用户信息
   Future<Map<String, dynamic>> updateUser(Map<String, dynamic> data) async {
     try {

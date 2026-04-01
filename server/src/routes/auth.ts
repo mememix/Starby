@@ -840,6 +840,62 @@ router.delete('/devices/:id', authenticateToken, async (req: Request, res: Respo
   }
 });
 
+/**
+ * DELETE /api/auth/account
+ * 注销账户（删除用户及其所有相关数据）
+ */
+router.delete('/account', authenticateToken, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = BigInt(req.userId as string);
+    console.log('[Auth] 注销账户，用户ID:', userId);
+
+    // 1. 软删除用户（设置 del_flag = 1）
+    await prisma.$queryRaw`
+      UPDATE lot_user
+      SET del_flag = 1, status = 0, update_time = NOW()
+      WHERE user_id = ${userId}
+    `;
+
+    // 2. 删除用户的设备绑定（软删除）
+    await prisma.$queryRaw`
+      UPDATE lot_user_device_bind
+      SET del_flag = 1, update_time = NOW()
+      WHERE user_id = ${userId}
+    `;
+
+    // 3. 删除用户的登录设备记录（软删除）
+    await prisma.$queryRaw`
+      UPDATE lot_user_login_device
+      SET del_flag = 1, update_time = NOW()
+      WHERE user_id = ${userId}
+    `;
+
+    // 4. 删除用户的积分记录（软删除）
+    await prisma.$queryRaw`
+      UPDATE lot_user_points
+      SET del_flag = 1, update_time = NOW()
+      WHERE user_id = ${userId}
+    `;
+
+    // 5. 删除用户的签到记录（软删除）
+    await prisma.$queryRaw`
+      UPDATE lot_user_checkin
+      SET del_flag = 1, update_time = NOW()
+      WHERE user_id = ${userId}
+    `;
+
+    console.log('[Auth] 账户注销成功，用户ID:', userId);
+
+    res.json({
+      success: true,
+      message: '账户已注销'
+    });
+  } catch (error) {
+    console.error('[Auth] 账户注销失败:', error);
+    next(error);
+  }
+});
+
 router.put('/me', authenticateToken, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.userId!;

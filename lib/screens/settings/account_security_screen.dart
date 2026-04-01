@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import '../../constants/colors.dart';
+import '../../routes.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
 
@@ -658,11 +659,38 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             child: const Text('取消'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('账号已注销')),
-              );
+              try {
+                final result = await ApiService().deleteAccount();
+                if (result['success'] == true) {
+                  // 清除本地存储的登录信息
+                  await StorageService.clearAllUserData();
+                  await StorageService.clearAuthToken();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('账号已注销')),
+                    );
+                    // 跳转到登录页面
+                    Navigator.of(context).pushNamedAndRemoveUntil(
+                      AppRoutes.login,
+                      (route) => false,
+                    );
+                  }
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(result['message'] ?? '注销失败')),
+                    );
+                  }
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('网络错误，请稍后重试')),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFF44336),
