@@ -84,48 +84,57 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     }
+
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFFCE8EA),
-              Colors.white,
-            ],
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/background.jpg'),
+            fit: BoxFit.cover,
           ),
         ),
-        child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 48),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: _buildLogo(),
-              ),
-              const SizedBox(height: 32),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: _buildTabSwitch(),
-              ),
-              const SizedBox(height: 24),
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.only(
-                    left: 24,
-                    right: 24,
-                    bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-                  ),
-                  child: _selectedTab == 0
-                      ? _buildPhonePasswordForm()
-                      : _buildDevicePasswordForm(),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.3),
+                Colors.black.withValues(alpha: 0.5),
+              ],
+            ),
+          ),
+          child: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: _buildLogo(),
                 ),
-              ),
-            ],
+                const SizedBox(height: 64),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: _buildTabSwitch(),
+                ),
+                const SizedBox(height: 32),
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.only(
+                      left: 24,
+                      right: 24,
+                      bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                    ),
+                    child: _selectedTab == 0
+                        ? _buildPhonePasswordForm()
+                        : _buildDevicePasswordForm(),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -136,19 +145,13 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildLogo() {
     return Column(
       children: [
+        const SizedBox(height: 40),
         Container(
           width: 80,
           height: 80,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFFE797A2),
-                Color(0xFFF5B5BD),
-              ],
-            ),
+            color: Colors.white.withValues(alpha: 0.2),
           ),
           child: const Icon(
             Icons.location_on_outlined,
@@ -162,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
+            color: Colors.white,
           ),
         ),
         const SizedBox(height: 4),
@@ -170,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
           '随时守护家人安全',
           style: TextStyle(
             fontSize: 14,
-            color: AppColors.textSecondary,
+            color: Colors.white70,
           ),
         ),
       ],
@@ -183,7 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
       children: [
         Container(
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: Colors.white.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.all(4),
@@ -212,7 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontWeight: FontWeight.bold,
                         color: _selectedTab == 0 
                             ? Colors.white 
-                            : AppColors.textSecondary,
+                            : Colors.white70,
                       ),
                     ),
                   ),
@@ -241,7 +244,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontWeight: FontWeight.bold,
                         color: _selectedTab == 1 
                             ? Colors.white 
-                            : AppColors.textSecondary,
+                            : Colors.white70,
                       ),
                     ),
                   ),
@@ -264,29 +267,31 @@ class _LoginScreenState extends State<LoginScreen> {
           '手机号码',
           style: TextStyle(
             fontSize: 14,
-            color: AppColors.textSecondary,
+            color: Colors.white,
           ),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
+          style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             hintText: '请输入手机号码',
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: Colors.white.withValues(alpha: 0.15),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              borderSide: const BorderSide(color: Colors.white, width: 2),
             ),
           ),
         ),
@@ -295,29 +300,31 @@ class _LoginScreenState extends State<LoginScreen> {
           '密码',
           style: TextStyle(
             fontSize: 14,
-            color: AppColors.textSecondary,
+            color: Colors.white,
           ),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: _phonePasswordController,
           obscureText: true,
+          style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             hintText: '请输入密码',
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: Colors.white.withValues(alpha: 0.15),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              borderSide: const BorderSide(color: Colors.white, width: 2),
             ),
           ),
         ),
@@ -394,10 +401,10 @@ class _LoginScreenState extends State<LoginScreen> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
+              backgroundColor: Colors.white,
+              foregroundColor: AppColors.primary,
               elevation: 4,
-              shadowColor: AppColors.primary.withValues(alpha: 0.3),
+              shadowColor: Colors.white.withValues(alpha: 0.3),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -421,7 +428,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: const Text(
               '验证码登录',
               style: TextStyle(
-                color: AppColors.primary,
+                color: Colors.white,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 decoration: TextDecoration.underline,
@@ -437,7 +444,7 @@ class _LoginScreenState extends State<LoginScreen> {
             const Text(
               '还没有账号? ',
               style: TextStyle(
-                color: AppColors.textSecondary,
+                color: Colors.white70,
                 fontSize: 14,
               ),
             ),
@@ -448,7 +455,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: const Text(
                 '注册账号',
                 style: TextStyle(
-                  color: AppColors.primary,
+                  color: Colors.white,
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                 ),
@@ -469,31 +476,33 @@ class _LoginScreenState extends State<LoginScreen> {
           '伙伴号',
           style: TextStyle(
             fontSize: 14,
-            color: AppColors.textSecondary,
+            color: Colors.white,
           ),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: _deviceController,
+          style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             hintText: '请输入伙伴号',
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: Colors.white.withValues(alpha: 0.15),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              borderSide: const BorderSide(color: Colors.white, width: 2),
             ),
             suffixIcon: IconButton(
-              icon: const Icon(Icons.qr_code_scanner, color: AppColors.primary),
+              icon: Icon(Icons.qr_code_scanner, color: Colors.white.withValues(alpha: 0.8)),
               onPressed: () => _showDeviceScanner(_deviceController),
             ),
           ),
@@ -503,29 +512,31 @@ class _LoginScreenState extends State<LoginScreen> {
           '伙伴密码',
           style: TextStyle(
             fontSize: 14,
-            color: AppColors.textSecondary,
+            color: Colors.white,
           ),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: _devicePasswordController,
           obscureText: true,
+          style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             hintText: '请输入密码',
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: Colors.white.withValues(alpha: 0.15),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              borderSide: const BorderSide(color: Colors.white, width: 2),
             ),
           ),
         ),
@@ -602,10 +613,10 @@ class _LoginScreenState extends State<LoginScreen> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
+              backgroundColor: Colors.white,
+              foregroundColor: AppColors.primary,
               elevation: 4,
-              shadowColor: AppColors.primary.withValues(alpha: 0.3),
+              shadowColor: Colors.white.withValues(alpha: 0.3),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -627,7 +638,7 @@ class _LoginScreenState extends State<LoginScreen> {
             const Text(
               '使用验证码登录? ',
               style: TextStyle(
-                color: AppColors.textSecondary,
+                color: Colors.white70,
                 fontSize: 14,
               ),
             ),
@@ -638,7 +649,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: const Text(
                 '切换验证码',
                 style: TextStyle(
-                  color: AppColors.primary,
+                  color: Colors.white,
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                 ),

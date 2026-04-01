@@ -56,7 +56,11 @@ class _HomeScreenState extends State<HomeScreen> {
         final baseUrl = ApiService.baseUrl;
         // 移除baseUrl末尾的 /api 部分
         final serverUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
-        finalUrl = '$serverUrl$avatarUrl';
+        // 去除重复的uploads/remote/前缀
+        if (avatarUrl.contains('/uploads/remote/uploads/remote/')) {
+          finalUrl = avatarUrl.replaceAll('/uploads/remote/uploads/remote/', '/uploads/remote/');
+        }
+        finalUrl = '$serverUrl$finalUrl';
         debugPrint('[HomeScreen] 拼接头像URL: $finalUrl');
       }
 
@@ -200,7 +204,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: Column(
         children: [
-          _buildHeader(),
           Expanded(flex: 2, child: _buildMapArea()),
           _buildDeviceList(),
           _buildBottomNav(),
@@ -339,10 +342,27 @@ class _HomeScreenState extends State<HomeScreen> {
             markers: markers,
             myLocationEnabled: false,
           ),
-          // 刷新按钮
+          // 添加设备按钮 - 右上角（与沉浸版一致，考虑安全区域）
           Positioned(
             right: 16,
-            top: 16,
+            top: MediaQuery.of(context).padding.top + 16,
+            child: GestureDetector(
+              onTap: () => Navigator.pushNamed(context, AppRoutes.deviceBind).then((_) => _loadDevices()),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.add, color: AppColors.primary, size: 24),
+              ),
+            ),
+          ),
+          // 刷新按钮 - 右下角
+          Positioned(
+            right: 16,
+            bottom: 16,
             child: FloatingActionButton.small(
               heroTag: 'refresh_map',
               onPressed: _isLoading ? null : _loadDevices,
@@ -506,19 +526,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: Colors.white,
                 border: Border.all(color: device.isOnline ? const Color(0xFFE797A2) : Colors.grey, width: 2),
               ),
-              child: isEmojiAvatar
-                  ? Center(child: Text(displayAvatar, style: const TextStyle(fontSize: 24)))
-                  : _getAvatarProvider(displayAvatar) != null
-                      ? ClipOval(
-                          child: Image(
+              child: ClipOval(
+                child: isEmojiAvatar
+                    ? Center(child: Text(displayAvatar, style: const TextStyle(fontSize: 24)))
+                    : _getAvatarProvider(displayAvatar) != null
+                        ? Image(
                             image: _getAvatarProvider(displayAvatar)!,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) {
                               return Center(child: Text(_getDefaultAvatar(device.name), style: const TextStyle(fontSize: 24)));
                             },
-                          ),
-                        )
-                      : Center(child: Text(_getDefaultAvatar(device.name), style: const TextStyle(fontSize: 24))),
+                          )
+                        : Center(child: Text(_getDefaultAvatar(device.name), style: const TextStyle(fontSize: 24))),
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(

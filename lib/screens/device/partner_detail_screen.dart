@@ -292,19 +292,17 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> {
           );
         }
         final imageBytes = base64Decode(base64Data);
-        return ClipOval(
-          child: Image.memory(
-            imageBytes,
-            fit: BoxFit.cover,
-            width: 64,
-            height: 64,
-            errorBuilder: (context, error, stackTrace) {
-              return Text(
-                _getDefaultAvatar(_device!.name),
-                style: const TextStyle(fontSize: 28),
-              );
-            },
-          ),
+        return Image.memory(
+          imageBytes,
+          fit: BoxFit.cover,
+          width: 64,
+          height: 64,
+          errorBuilder: (context, error, stackTrace) {
+            return Text(
+              _getDefaultAvatar(_device!.name),
+              style: const TextStyle(fontSize: 28),
+            );
+          },
         );
       } catch (e) {
         // 解码失败，显示默认头像
@@ -323,23 +321,28 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> {
       final baseUrl = ApiService.baseUrl;
       // 移除baseUrl末尾的 /api 部分
       final serverUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
-      finalUrl = '$serverUrl$avatarUrl';
+      
+      // 去除重复的uploads/remote/前缀
+      String cleanPath = avatarUrl;
+      if (avatarUrl.contains('/uploads/remote/uploads/remote/')) {
+        cleanPath = avatarUrl.replaceAll('/uploads/remote/uploads/remote/', '/uploads/remote/');
+      }
+      
+      finalUrl = '$serverUrl$cleanPath';
       debugPrint('[PartnerDetail] 拼接头像URL: $finalUrl');
     }
 
-    return ClipOval(
-      child: Image.network(
-        finalUrl,
-        fit: BoxFit.cover,
-        width: 64,
-        height: 64,
-        errorBuilder: (context, error, stackTrace) {
-          return Text(
-            _getDefaultAvatar(_device!.name),
-            style: const TextStyle(fontSize: 28),
-          );
-        },
-      ),
+    return Image.network(
+      finalUrl,
+      fit: BoxFit.cover,
+      width: 64,
+      height: 64,
+      errorBuilder: (context, error, stackTrace) {
+        return Text(
+          _getDefaultAvatar(_device!.name),
+          style: const TextStyle(fontSize: 28),
+        );
+      },
     );
   }
 
@@ -499,16 +502,21 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> {
           // 伙伴信息
           Row(
             children: [
-              // 伙伴头像
+              // 伙伴头像 - 使用 ClipOval 确保图片也是圆形
               Container(
                 width: 64,
                 height: 64,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.white.withValues(alpha: 0.2),
-                  border: Border.all(color: Colors.white, width: 3),
+                  border: Border.all(
+                    color: _device!.isOnline ? Colors.white : Colors.grey,
+                    width: 3,
+                  ),
                 ),
-                child: _buildAvatarWidget(),
+                child: ClipOval(
+                  child: _buildAvatarWidget(),
+                ),
               ),
               const SizedBox(width: 16),
               // 伙伴名称和状态

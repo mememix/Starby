@@ -51,6 +51,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
         debugPrint('[ProfileScreen] 解析base64头像失败: $e');
         return null;
       }
+    } else if (avatarUrl.startsWith('/')) {
+      // 相对路径，需要拼接服务器地址
+      final baseUrl = ApiService.baseUrl;
+      final serverUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
+      debugPrint('[ProfileScreen] 原始avatarUrl: $avatarUrl');
+      debugPrint('[ProfileScreen] serverUrl: $serverUrl');
+      // 去除重复的uploads/remote/前缀
+      String cleanPath = avatarUrl;
+      if (avatarUrl.contains('/uploads/remote/uploads/remote/')) {
+        cleanPath = avatarUrl.replaceAll('/uploads/remote/uploads/remote/', '/uploads/remote/');
+        debugPrint('[ProfileScreen] 去重后的cleanPath: $cleanPath');
+      }
+      final finalUrl = '$serverUrl$cleanPath';
+      debugPrint('[ProfileScreen] 拼接头像URL: $finalUrl');
+      return NetworkImage(finalUrl);
     } else {
       // 如果是普通的网络URL，使用NetworkImage
       return NetworkImage(avatarUrl);

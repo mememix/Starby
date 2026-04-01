@@ -484,7 +484,15 @@ class _PartnerSettingsScreenState extends State<PartnerSettingsScreen> {
       final baseUrl = ApiService.baseUrl;
       // 移除baseUrl末尾的 /api 部分
       final serverUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
-      finalUrl = '$serverUrl$avatarUrl';
+      
+      // 去除avatarUrl中重复的uploads/remote/前缀
+      String cleanPath = avatarUrl;
+      // 处理 /uploads/remote/uploads/remote/ 重复情况
+      if (avatarUrl.contains('/uploads/remote/uploads/remote/')) {
+        cleanPath = avatarUrl.replaceAll('/uploads/remote/uploads/remote/', '/uploads/remote/');
+      }
+      
+      finalUrl = '$serverUrl$cleanPath';
       debugPrint('[PartnerSettings] 拼接头像URL: $finalUrl');
     }
 

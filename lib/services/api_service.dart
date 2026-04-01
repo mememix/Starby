@@ -774,8 +774,8 @@ class ApiService {
   Future<int> getDeviceSharesCount(String deviceId) async {
     try {
       final response = await _dio.get('/devices/$deviceId/shares/count');
-      if (response.data['success'] == true) {
-        return response.data['data']['count'] as int;
+      if (response.data['success'] == true && response.data['data'] != null) {
+        return response.data['data']['count'] as int? ?? 0;
       }
       return 0;
     } catch (e) {

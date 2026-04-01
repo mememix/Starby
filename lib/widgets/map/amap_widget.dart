@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:url_launcher/url_launcher.dart';
+import '../../services/api_service.dart';
 
 /// 高德地图组件 - 使用 flutter_map + 高德地图瓦片
 ///
@@ -253,6 +254,18 @@ class _AMapWidgetState extends State<AMapWidget> {
         debugPrint('[AMapWidget] 解析base64头像失败: $e');
         return null;
       }
+    } else if (avatarUrl.startsWith('/uploads/')) {
+      // 相对路径，需要拼接服务器地址
+      final baseUrl = ApiService.baseUrl;
+      final serverUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
+      // 去除重复的uploads/remote/前缀
+      String cleanPath = avatarUrl;
+      if (avatarUrl.contains('/uploads/remote/uploads/remote/')) {
+        cleanPath = avatarUrl.replaceAll('/uploads/remote/uploads/remote/', '/uploads/remote/');
+      }
+      final finalUrl = '$serverUrl$cleanPath';
+      debugPrint('[AMapWidget] 拼接头像URL: $finalUrl');
+      return NetworkImage(finalUrl);
     } else {
       // 如果是普通的网络URL，使用NetworkImage
       return NetworkImage(avatarUrl);

@@ -10,6 +10,7 @@ import '../../models/location.dart';
 import '../../routes.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
+import '../../services/amap_service.dart';
 import '../../widgets/map/amap_widget.dart';
 
 class HomeImmersiveScreen extends StatefulWidget {
@@ -25,6 +26,7 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
   bool _isLoading = true;
   List<Device> _devices = [];
   Map<String, Location> _deviceLocations = {};
+  Map<String, String> _realtimeAddresses = {}; // 存储实时地址
   String? _errorMessage;
 
   // 将base64头像数据转换为ImageProvider
@@ -55,7 +57,11 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
         final baseUrl = ApiService.baseUrl;
         // 移除baseUrl末尾的 /api 部分
         final serverUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
-        finalUrl = '$serverUrl$avatarUrl';
+        // 去除重复的uploads/remote/前缀
+        if (avatarUrl.contains('/uploads/remote/uploads/remote/')) {
+          finalUrl = avatarUrl.replaceAll('/uploads/remote/uploads/remote/', '/uploads/remote/');
+        }
+        finalUrl = '$serverUrl$finalUrl';
         debugPrint('[HomeImmersiveScreen] 拼接头像URL: $finalUrl');
       }
 
@@ -130,25 +136,27 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
 
             debugPrint('[HomeImmersive] 使用后端转换后坐标: ($finalLat, $finalLng)');
 
-            // 优先使用API的经纬度（最新数据），但使用设备表的地址（轨迹表地址通常为null）
+            // 优先使用实时位置API的电量（最新数据），然后才是设备表的电量
+            // 优先使用实时位置API的时间（最新数据），然后才是设备表的时间
             final mergedLocation = Location(
               id: location.id,
               deviceId: device.id,
               lat: finalLat,
               lng: finalLng,
-              address: device.address ?? location.address, // 优先使用设备表的地址
+              address: device.address ?? location.address,
               accuracy: location.accuracy,
-              battery: device.battery ?? location.battery, // 优先使用设备表的电量
-              timestamp: location.timestamp ?? device.lastUpdate ?? DateTime.now(),
+              battery: location.battery ?? device.battery, // 优先使用实时位置API的电量
+              timestamp: location.timestamp ?? device.lastUpdate ?? DateTime.now(), // 优先使用实时位置API的时间
               type: location.type,
             );
             locations[device.id] = mergedLocation;
             if (location.address == null && device.address != null) {
               debugPrint('[HomeImmersive] Merged device address for ${device.id}');
             }
-            if (location.battery == null && device.battery != null) {
-              debugPrint('[HomeImmersive] Merged device battery for ${device.id}');
+            if (location.battery != null) {
+              debugPrint('[HomeImmersive] 使用实时电量 for ${device.id}: ${location.battery}');
             }
+            debugPrint('[HomeImmersive] 使用实时时间 for ${device.id}: ${location.timestamp}');
           } else if (device.latitude != null && device.longitude != null) {
             // 位置API返回无效数据，使用设备对象中的位置信息作为后备（应用统一坐标校正）
             debugPrint('[HomeImmersive] API returned (0,0), using device location for ${device.id}');
@@ -208,6 +216,8 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
           _deviceLocations = locations;
           _isLoading = false;
         });
+        // 加载实时地址
+        _loadRealtimeAddresses();
       }
     } on DioException catch (e) {
       if (mounted) {
@@ -231,6 +241,29 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
     setState(() {
       _currentDeviceIndex = (_currentDeviceIndex + direction + _devices.length) % _devices.length;
     });
+  }
+
+  // 加载实时地址(逆地理编码)
+  Future<void> _loadRealtimeAddresses() async {
+    for (final device in _devices) {
+      final location = _deviceLocations[device.id];
+      if (location != null && location.lat != 0.0 && location.lng != 0.0) {
+        try {
+          final address = await AmapService.getAddress(
+            location.lng,
+            location.lat,
+          );
+          if (address != null && mounted) {
+            setState(() {
+              _realtimeAddresses[device.id] = address;
+            });
+            debugPrint('[HomeImmersive] 实时地址 ${device.name}: $address');
+          }
+        } catch (e) {
+          debugPrint('[HomeImmersive] 获取实时地址失败 ${device.name}: $e');
+        }
+      }
+    }
   }
 
   @override
@@ -412,36 +445,6 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
               ),
             ),
 
-            // 设备头像 - 位置调整到45%
-            Positioned(
-              top: MediaQuery.of(context).size.height * 0.45,
-              left: MediaQuery.of(context).size.width * 0.5 - 40,
-              child: GestureDetector(
-                onTap: () => Navigator.pushNamed(
-                  context,
-                  AppRoutes.deviceDetail,
-                  arguments: device.id,
-                ),
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 4),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.4),
-                        blurRadius: 24,
-                        spreadRadius: 8,
-                      ),
-                    ],
-                  ),
-                  child: _buildDeviceAvatar(device, 36),
-                ),
-              ),
-            ),
-
             // 顶部栏
             Positioned(
               top: MediaQuery.of(context).padding.top + 16,
@@ -533,9 +536,11 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
                         height: 56,
                         decoration: BoxDecoration(
                           color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(14),
+                          shape: BoxShape.circle,
                         ),
-                        child: _buildDeviceAvatar(device, 28),
+                        child: ClipOval(
+                          child: _buildDeviceAvatar(device, 28),
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -551,10 +556,20 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            if (currentLocation != null)
+                            if (_realtimeAddresses[device.id] != null)
+                              Text(
+                                _realtimeAddresses[device.id]!,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            else if (currentLocation != null)
                               Text(
                                 currentLocation.address ?? 
-                                    '📍 ${currentLocation.lat.toStringAsFixed(4)}, ${currentLocation.lng.toStringAsFixed(4)}',
+                                    '获取地址中...',
                                 style: const TextStyle(
                                   fontSize: 13,
                                   color: AppColors.textSecondary,
@@ -702,14 +717,23 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
   String _formatTime(DateTime time) {
     final now = DateTime.now();
     final difference = now.difference(time);
+    
     if (difference.inMinutes < 1) {
       return '刚刚';
-    } else if (difference.inHours < 1) {
+    } else if (difference.inMinutes < 5) {
       return '${difference.inMinutes}分钟前';
+    } else if (difference.inHours < 1) {
+      // 5分钟以上但不足1小时，显示具体时间
+      return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     } else if (difference.inDays < 1) {
-      return '${difference.inHours}小时前';
+      // 不足24小时，显示具体时间
+      return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    } else if (difference.inDays == 1) {
+      // 昨天
+      return '昨天 ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     } else {
-      return '${difference.inDays}天前';
+      // 更早
+      return '${time.month}-${time.day} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     }
   }
 
@@ -723,14 +747,12 @@ class _HomeImmersiveScreenState extends State<HomeImmersiveScreen> {
     } else {
       final provider = _getAvatarProvider(displayAvatar);
       if (provider != null) {
-        return ClipOval(
-          child: Image(
-            image: provider,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Text(_getDefaultAvatar(device.name), style: TextStyle(fontSize: fontSize));
-            },
-          ),
+        return Image(
+          image: provider,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Text(_getDefaultAvatar(device.name), style: TextStyle(fontSize: fontSize));
+          },
         );
       } else {
         return Text(_getDefaultAvatar(device.name), style: TextStyle(fontSize: fontSize));

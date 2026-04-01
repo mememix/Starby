@@ -15,12 +15,12 @@ class AppConfig {
       case Environment.dev:
         return const String.fromEnvironment(
           'API_BASE_URL',
-          defaultValue: 'http://192.168.1.5:3000/api',
+          defaultValue: 'http://192.168.1.8:3000/api',
         );
       case Environment.prod:
         return const String.fromEnvironment(
           'API_BASE_URL',
-          defaultValue: 'http://180.76.100.61:3000/api',
+          defaultValue: 'http://192.168.1.8:3000/api',
         );
     }
   }
@@ -44,14 +44,14 @@ class AppConfig {
   static String get AMAP_ANDROID_KEY {
         return const String.fromEnvironment(
           'AMAP_ANDROID_KEY',
-          defaultValue: 'your-amap-android-key-here',
+          defaultValue: '827fcab330d4be1efe82a3bb995bac84',
         );
   }
 
   static String get AMAP_IOS_KEY {
     return const String.fromEnvironment(
       'AMAP_IOS_KEY',
-      defaultValue: 'your-amap-ios-key-here',
+      defaultValue: '827fcab330d4be1efe82a3bb995bac84',
     );
   }
 
@@ -59,7 +59,7 @@ class AppConfig {
   static String get AMAP_WEB_KEY {
         return const String.fromEnvironment(
           'AMAP_WEB_KEY',
-          defaultValue: 'your-amap-web-key-here',
+          defaultValue: 'eea1694fb0a9cad500e605eaa8e3dffe',
         );
   }
 
@@ -78,7 +78,7 @@ class AppConfig {
       print('WebSocket URL: $WS_BASE_URL');
       print('AMAP Android Key: ${AMAP_ANDROID_KEY != "your-amap-android-key-here" ? "已配置" : "未配置"}');
       print('AMAP iOS Key: ${AMAP_IOS_KEY != "your-amap-ios-key-here" ? "已配置" : "未配置"}');
-      print('AMAP Web Key: ${AMAP_WEB_KEY != "your-amap-android-key-here" ? "已配置" : "未配置"}');
+      print('AMAP Web Key: ${AMAP_WEB_KEY != "your-amap-web-key-here" ? "已配置" : "未配置"}');
       print('=================================');
     }
   }

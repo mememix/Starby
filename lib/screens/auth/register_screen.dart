@@ -42,34 +42,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFFCE8EA),
-              Colors.white,
-            ],
+          image: DecorationImage(
+            image: AssetImage('assets/images/background.jpg'),
+            fit: BoxFit.cover,
           ),
         ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              children: [
-                const SizedBox(height: 48),
-
-                // Logo区域
-                _buildLogo(),
-
-                const SizedBox(height: 32),
-
-                // 表单区域
-                Expanded(
-                  child: _buildRegisterForm(),
-                ),
-
-                const SizedBox(height: 24),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.3),
+                Colors.black.withValues(alpha: 0.5),
               ],
+            ),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                children: [
+                  const SizedBox(height: 16),
+
+                  // Logo区域
+                  _buildLogo(),
+
+                  const SizedBox(height: 64),
+
+                  // 表单区域
+                  Expanded(
+                    child: _buildRegisterForm(),
+                  ),
+
+                  const SizedBox(height: 24),
+                ],
+              ),
             ),
           ),
         ),
@@ -81,19 +89,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget _buildLogo() {
     return Column(
       children: [
+        const SizedBox(height: 40),
         Container(
           width: 80,
           height: 80,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFFE797A2),
-                Color(0xFFF5B5BD),
-              ],
-            ),
+            color: Colors.white.withValues(alpha: 0.2),
           ),
           child: const Icon(
             Icons.location_on_outlined,
@@ -107,7 +109,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
+            color: Colors.white,
           ),
         ),
         const SizedBox(height: 4),
@@ -115,7 +117,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           '注册新账号',
           style: TextStyle(
             fontSize: 14,
-            color: AppColors.textSecondary,
+            color: Colors.white70,
           ),
         ),
       ],
@@ -132,29 +134,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
             '手机号码',
             style: TextStyle(
               fontSize: 14,
-              color: AppColors.textSecondary,
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
+            style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: '请输入手机号码',
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: Colors.white.withValues(alpha: 0.15),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.border),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.border),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                borderSide: const BorderSide(color: Colors.white, width: 2),
               ),
             ),
           ),
@@ -163,7 +167,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             '验证码',
             style: TextStyle(
               fontSize: 14,
-              color: AppColors.textSecondary,
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
@@ -173,22 +177,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: TextField(
                   controller: _codeController,
                   keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     hintText: '请输入验证码',
+                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: Colors.white.withValues(alpha: 0.15),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.border),
+                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.border),
+                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                      borderSide: const BorderSide(color: Colors.white, width: 2),
                     ),
                   ),
                 ),
@@ -200,8 +206,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: ElevatedButton(
                   onPressed: (_countdown > 0 || _isSendingCode) ? null : _sendVerificationCode,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFFE8EB),
-                    foregroundColor: AppColors.primary,
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -213,7 +219,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
                       : Text(
@@ -221,7 +227,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
-                            color: _countdown > 0 ? AppColors.textSecondary : AppColors.primary,
+                            color: _countdown > 0 ? Colors.white54 : Colors.white,
                           ),
                         ),
                 ),
@@ -233,29 +239,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
             '设置密码',
             style: TextStyle(
               fontSize: 14,
-              color: AppColors.textSecondary,
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _passwordController,
             obscureText: true,
+            style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: '请设置密码（6-20位）',
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: Colors.white.withValues(alpha: 0.15),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.border),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.border),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                borderSide: const BorderSide(color: Colors.white, width: 2),
               ),
             ),
           ),
@@ -264,29 +272,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
             '确认密码',
             style: TextStyle(
               fontSize: 14,
-              color: AppColors.textSecondary,
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _confirmPasswordController,
             obscureText: true,
+            style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: '请再次输入密码',
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: Colors.white.withValues(alpha: 0.15),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.border),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.border),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                borderSide: const BorderSide(color: Colors.white, width: 2),
               ),
             ),
           ),
@@ -297,10 +307,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: ElevatedButton(
               onPressed: _isLoading ? null : _handleRegister,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.primary,
                 elevation: 4,
-                shadowColor: AppColors.primary.withValues(alpha: 0.3),
+                shadowColor: Colors.white.withValues(alpha: 0.3),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -324,7 +334,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 '已有账号？',
                 style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.textSecondary,
+                  color: Colors.white70,
                 ),
               ),
               TextButton(
@@ -335,7 +345,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   '去登录',
                   style: TextStyle(
                     fontSize: 14,
-                    color: AppColors.primary,
+                    color: Colors.white,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
