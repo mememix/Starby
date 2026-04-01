@@ -66,29 +66,22 @@ Starby/
 
 ## 数据库配置
 
-### 开发环境
+### 配置方式
 
-当前开发环境使用远程 MySQL 数据库：
-
-**数据库地址**: `116.204.117.57:3307`
-**数据库名**: `starby-dev`
-
-
-配置文件：`server/.env`
-```env
-DATABASE_URL="mysql://root:StrongPass!@116.204.117.57:3307/starby-dev"
+1. 复制环境变量模板：
+```bash
+cd server
+cp .env.example .env
 ```
 
-### 生产环境
-
-生产环境配置需要修改 `server/.env` 文件：
-
+2. 编辑 `.env` 文件，填写实际的数据库连接信息：
 ```env
-# 修改为生产数据库连接
-DATABASE_URL="mysql://username:password@production-host:3306/XXXX"
+DATABASE_URL="mysql://用户名:密码@数据库地址:端口/数据库名?timezone=%2B08%3A00"
+```
 
-# 修改环境变量
-NODE_ENV=production
+3. 初始化数据库（首次部署）：
+```bash
+npx prisma migrate deploy
 ```
 
 ### 数据库表结构
@@ -104,59 +97,50 @@ NODE_ENV=production
 
 ## 环境变量配置
 
-### 后端服务环境变量
+### 后端服务
 
-配置文件：`server/.env`
+配置文件：`server/.env`（参考 `server/.env.example`）
 
 ```env
-# 服务器配置
-PORT=3000
-HOST=0.0.0.0
-NODE_ENV=development
-
-# JT808服务器配置
-JT808_PORT=7100
-JT808_HOST=116.204.117.57
-
 # 数据库连接
-DATABASE_URL="mysql://root:Password@116.204.117.57:3307/starby-dev"
+DATABASE_URL="mysql://用户名:密码@数据库地址:端口/数据库名?timezone=%2B08%3A00"
 
-# Redis 连接
-REDIS_URL="redis://localhost:6379"
-
-# JWT 密钥
-JWT_SECRET=your-super-secret-jwt-key
+# JWT 密钥（生产环境请使用强密码）
+JWT_SECRET="your-super-secret-jwt-key"
 JWT_EXPIRES_IN="7d"
 
-# 高德地图 API
-AMAP_API_KEY="827fcab330d4be1efe82a3bb995bac84"
-
-# 腾讯云短信服务配置
-TENCENT_CLOUD_SECRET_ID=“”
-TENCENT_CLOUD_SECRET_KEY=“”
-SMS_APP_ID=“”
-SMS_TEMPLATE_ID=“”
-SMS_SIGN_NAME=“”
+# 服务器配置
+PORT=3001
+NODE_ENV=production
 ```
 
-### 移动端 API 配置
+### 移动端高德地图配置
 
-配置位置：`lib/config/api_config.dart`
+配置位置：`lib/config/app_config.dart`
 
-```dart
-class ApiConfig {
-  static const String baseUrl = 'http://116.204.117.57:3000/api';
-  static const Duration timeout = Duration(seconds: 30);
-}
+下载代码后需要替换为你的高德地图 Key：
+
+**方式一：直接修改配置文件（简单）**
+
+编辑 `lib/config/app_config.dart`，将以下占位符替换为真实值：
+- `your-amap-android-key-here` → 高德 Android Key
+- `your-amap-ios-key-here` → 高德 iOS Key
+- `your-amap-web-key-here` → 高德 Web服务 Key
+- `https://api.starby.com/api` → 实际的 API 地址
+
+**方式二：编译时注入（推荐）**
+
+```bash
+flutter build apk \
+  --dart-define=AMAP_ANDROID_KEY=你的key \
+  --dart-define=AMAP_IOS_KEY=你的key \
+  --dart-define=AMAP_WEB_KEY=你的key \
+  --dart-define=API_BASE_URL=https://你的域名/api
 ```
 
 ### 管理后台 API 配置
 
-配置位置：`admin/src/utils/api.ts`
-
-```typescript
-const API_BASE_URL = 'http://116.204.117.57:3000/api';
-```
+配置位置：`admin/src/utils/api.ts`，修改 API 地址为你的服务器地址。
 
 ## API 端口说明
 
@@ -302,55 +286,92 @@ flutter build ios
 
 ## 部署说明
 
+### 服务器环境准备
+
+```bash
+# 安装 Node.js (>=18)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -
+sudo apt install -y nodejs
+
+# 安装 PM2 进程管理器
+npm install -g pm2
+
+# 安装 Nginx
+sudo apt install -y nginx
+```
+
 ### 后端服务部署
 
-1. **配置生产环境变量**
-   ```bash
-   # 修改 server/.env
-   NODE_ENV=production
-   DATABASE_URL="mysql://user:pass@host:3306/XXXX"
-   JWT_SECRET="your-production-secret"
-   ```
+```bash
+# 1. 克隆代码
+git clone https://github.com/mememix/Starby.git
+cd Starby/server
 
-2. **构建并启动**
-   ```bash
-   cd server
-   npm run build
-   npm start
-   ```
+# 2. 安装依赖
+npm install
 
-3. **使用 PM2 管理进程（推荐）**
-   ```bash
-   npm install -g pm2
-   pm2 start dist/app.js --name starby-server
-   pm2 startup
-   pm2 save
-   ```
+# 3. 配置环境变量
+cp .env.example .env
+# 编辑 .env 填写数据库连接、JWT密钥等
+
+# 4. 生成 Prisma Client 并同步数据库
+npm run prisma:generate
+npm run prisma:migrate
+
+# 5. 编译 TypeScript
+npm run build
+
+# 6. 使用 PM2 启动
+pm2 start ecosystem.config.json
+pm2 startup
+pm2 save
+```
 
 ### 管理后台部署
 
-1. **构建生产版本**
-   ```bash
-   cd admin
-   npm run build
-   ```
+```bash
+# 1. 构建生产版本
+cd admin
+npm install
+npm run build
 
-2. **部署到 Nginx 或其他 Web 服务器**
-   ```bash
-   # 将 dist 目录内容部署到 Web 服务器
-   cp -r dist/* /var/www/starby-admin/
-   ```
+# 2. 部署到 Nginx
+sudo cp -r dist/* /var/www/starby-admin/
+```
 
-### 移动端部署
+Nginx 配置示例 (`/etc/nginx/sites-available/starby-admin`)：
+```nginx
+server {
+    listen 80;
+    server_name admin.yourdomain.com;
 
-使用 Flutter 构建发布版本：
+    root /var/www/starby-admin;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+### 移动端构建
 
 ```bash
-# Android
+# 修改 lib/config/app_config.dart 中的 API 地址和地图 Key 后
+
+# Android APK
 flutter build apk --release
+
+# Android App Bundle
 flutter build appbundle --release
 
-# iOS
+# iOS (需要 Mac + Xcode)
 flutter build ios --release
 ```
 
@@ -372,17 +393,6 @@ flutter build ios --release
 
 检查 JT808 端口（默认 7100）是否开放，以及设备的网络配置。
 
-## 测试账户
-
-### 后台管理系统
-- 地址：`http://localhost:5173/`
-- 用户名: `admin`
-- 密码: `123456`
-
-### App 端测试用户
-
-
-
 ## 联系方式
 
 - 项目名称: Starby
@@ -391,4 +401,4 @@ flutter build ios --release
 
 ## 许可证
 
-Copyright © 2026 Starby. All rights reserved.
+Copyright 2026 Starby. All rights reserved.
