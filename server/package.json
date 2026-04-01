@@ -7,13 +7,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
     "build": "tsc",
     "start": "node dist/app.js",
-    "remote-jt808": "ts-node remote-jt808-server.ts",
-    "sync-location": "ts-node sync-location-to-dev.ts",
     "prisma:generate": "prisma generate",
-    "capture": "ts-node jt808-capture.ts",
-    "capture-remote": "ts-node jt808-remote-capture.ts",
-    "monitor-http": "ts-node http-jt808-monitor.ts",
-    "analyze-logs": "ts-node analyze-jt808-logs.ts"
+    "prisma:migrate": "prisma migrate deploy"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
