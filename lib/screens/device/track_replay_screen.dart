@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:dio/dio.dart';
 import '../../constants/colors.dart';
 import '../../models/location.dart';
+import '../../utils/trajectory_calibrator.dart';
 import '../../widgets/map/amap_widget.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
@@ -30,11 +31,13 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
   TimeOfDay? startTime;
   TimeOfDay? endTime;
   late String deviceId;
+  late List<Location> _originalLocations;
   late List<Location> locations;
   int currentIndex = 0;
   Timer? _playbackTimer;
   bool _isLoading = false;
   String? _errorMessage;
+  bool _isTrackInfoExpanded = false;
 
   // 显示速度到内部速度的映射
   final Map<String, double> _speedMapping = {
@@ -50,19 +53,33 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
     // 优先使用构造函数传递的参数，其次使用路由参数
     if (widget.deviceId != null && widget.locations != null) {
       deviceId = widget.deviceId!;
-      locations = widget.locations!;
+      _originalLocations = widget.locations!;
+      // 轨迹校准：过滤掉几乎一致的点位
+      locations = TrajectoryCalibrator.calibrate(_originalLocations);
       // 如果有数据，设置selectedDate为第一个位置点的日期
       if (locations.isNotEmpty) {
         selectedDate = locations.first.timestamp;
+      }
+      // 打印校准统计信息
+      if (_originalLocations.length > locations.length) {
+        final stats = TrajectoryCalibrator.getCalibrationStats(_originalLocations, locations);
+        debugPrint('轨迹校准: 原始${stats['originalCount']}点 → 校准后${stats['calibratedCount']}点 (减少${stats['reduction']}%)');
       }
     } else {
       final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       if (args != null) {
         deviceId = args['deviceId'];
-        locations = args['locations'] as List<Location>;
+        _originalLocations = args['locations'] as List<Location>;
+        // 轨迹校准：过滤掉几乎一致的点位
+        locations = TrajectoryCalibrator.calibrate(_originalLocations);
         // 如果有数据，设置selectedDate为第一个位置点的日期
         if (locations.isNotEmpty) {
           selectedDate = locations.first.timestamp;
+        }
+        // 打印校准统计信息
+        if (_originalLocations.length > locations.length) {
+          final stats = TrajectoryCalibrator.getCalibrationStats(_originalLocations, locations);
+          debugPrint('轨迹校准: 原始${stats['originalCount']}点 → 校准后${stats['calibratedCount']}点 (减少${stats['reduction']}%)');
         }
       }
     }
@@ -101,8 +118,15 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
       );
 
       if (mounted) {
+        _originalLocations = newLocations;
+        // 轨迹校准：过滤掉几乎一致的点位
+        locations = TrajectoryCalibrator.calibrate(_originalLocations);
+        // 打印校准统计信息
+        if (_originalLocations.length > locations.length) {
+          final stats = TrajectoryCalibrator.getCalibrationStats(_originalLocations, locations);
+          debugPrint('轨迹校准: 原始${stats['originalCount']}点 → 校准后${stats['calibratedCount']}点 (减少${stats['reduction']}%)');
+        }
         setState(() {
-          locations = newLocations;
           currentIndex = 0;
           progress = 0.0;
           _isLoading = false;
@@ -270,14 +294,24 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
         children: [
           _buildHeader(),
           Expanded(
+            flex: 3,
+            child: Column(
+              children: [
+                _buildTimeSelector(),
+                Expanded(child: _buildMapArea()),
+              ],
+            ),
+          ),
+          Flexible(
+            flex: 2,
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  _buildTimeSelector(),
-                  _buildMapArea(),
                   _buildPlaybackControls(),
-                  _buildTrackInfo(),
+                  const SizedBox(height: 12),
                   _buildStatistics(),
+                  const SizedBox(height: 12),
+                  _buildTrackInfo(),
                   const SizedBox(height: 20),
                 ],
               ),
@@ -413,46 +447,7 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          // 快速选择
-          Wrap(
-            spacing: 8,
-            children: [
-              _buildQuickTimeBtn('今天', false, () => _loadHistoryForDate(DateTime.now())),
-              _buildQuickTimeBtn('昨天', false, () => _loadHistoryForDate(DateTime.now().subtract(const Duration(days: 1)))),
-              _buildQuickTimeBtn('近7天', true, () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请选择具体日期')),
-                );
-              }),
-              _buildQuickTimeBtn('近30天', false, () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请选择具体日期')),
-                );
-              }),
-            ],
-          ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildQuickTimeBtn(String text, bool isActive, VoidCallback? onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isActive ? AppColors.primary : Colors.grey[100],
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 13,
-            color: isActive ? Colors.white : AppColors.textSecondary,
-          ),
-        ),
       ),
     );
   }
@@ -565,8 +560,17 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
   // 播放控制
   Widget _buildPlaybackControls() {
     return Container(
-      color: Colors.white,
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
       child: Column(
         children: [
           // 进度条
@@ -729,223 +733,204 @@ class _TrackReplayScreenState extends State<TrackReplayScreen> {
     );
   }
 
-  // 轨迹点信息
+  // 轨迹信息（可展开收起）
   Widget _buildTrackInfo() {
-    return Container(
-      color: Colors.white,
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                '轨迹点信息',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  // TODO: 展开全部
-                },
-                child: const Text(
-                  '展开全部',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.primary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...locations.map((point) => _buildTrackPointCard(point)),
-        ],
-      ),
-    );
-  }
+    if (locations.isEmpty) return const SizedBox.shrink();
 
-  Widget _buildTrackPointCard(Location point) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.location_on,
-              size: 14,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _formatTime(point.timestamp),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on,
-                      size: 14,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        point.address ?? '${point.lat.toStringAsFixed(6)}, ${point.lng.toStringAsFixed(6)}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _isTrackInfoExpanded = !_isTrackInfoExpanded;
+        });
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            // 标题栏
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        '详细点位',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.access_time,
-                      size: 12,
-                      color: AppColors.textHint,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${point.lat.toStringAsFixed(6)}, ${point.lng.toStringAsFixed(6)}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textHint,
+                      const SizedBox(width: 8),
+                      Icon(
+                        _isTrackInfoExpanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        color: AppColors.textSecondary,
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            // 展开的内容
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: _isTrackInfoExpanded
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(color: Colors.grey[200]!),
+                        ),
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: locations.length,
+                        separatorBuilder: (context, index) => Divider(
+                          height: 1,
+                          color: Colors.grey[200],
+                        ),
+                        itemBuilder: (context, index) {
+                          final location = locations[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: index == 0
+                                        ? Colors.green
+                                        : index == locations.length - 1
+                                            ? Colors.red
+                                            : AppColors.primary.withValues(alpha: 0.3),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    index == 0
+                                        ? Icons.play_arrow
+                                        : index == locations.length - 1
+                                            ? Icons.flag
+                                            : Icons.circle,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _formatTime(location.timestamp),
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        location.address ??
+                                            '${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   // 轨迹统计
   Widget _buildStatistics() {
+    if (locations.isEmpty) return const SizedBox.shrink();
+
+    final duration = locations.last.timestamp.difference(locations.first.timestamp);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+
     return Container(
-      color: Colors.white,
-      margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
         children: [
-          const Text(
-            '轨迹统计',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
+          Expanded(
+            child: _buildStatItem(
+              Icons.timer,
+              hours > 0 ? '${hours}h${minutes}m' : '${minutes}m',
+              '时长',
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  Icons.route,
-                  '28.5',
-                  '总里程(km)',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  Icons.hourglass_bottom,
-                  '10h',
-                  '总时长',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  Icons.speed,
-                  '65',
-                  '最高速度(km/h)',
-                ),
-              ),
-            ],
+          Expanded(
+            child: _buildStatItem(
+              Icons.location_on,
+              locations.length.toString(),
+              '轨迹点',
+            ),
+          ),
+          Expanded(
+            child: _buildStatItem(
+              Icons.route,
+              '0.0',
+              '公里',
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard(IconData icon, String value, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        children: [
-          Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-              icon,
-              size: 18,
-              color: AppColors.primary,
-            ),
+  Widget _buildStatItem(IconData icon, String value, String label) {
+    return Column(
+      children: [
+        Icon(icon, size: 20, color: AppColors.primary),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
           ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppColors.textHint,
           ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textHint,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

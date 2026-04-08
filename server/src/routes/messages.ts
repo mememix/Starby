@@ -180,7 +180,13 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     };
 
     if (type) {
-      where.message_type = type;
+      if (type === 'fence') {
+        // 围栏消息特殊处理：查询message_type=REQUEST且message_id=0x0200的消息
+        where.message_type = 'REQUEST';
+        where.message_id = '0x0200';
+      } else {
+        where.message_type = type;
+      }
     }
     if (unreadOnly === 'true') {
       where.process_status = false;
@@ -588,7 +594,13 @@ router.put('/read-all', authenticate, async (req: Request, res: Response, next: 
     };
 
     if (type) {
-      where.message_type = type;
+      if (type === 'fence') {
+        // 围栏消息特殊处理：查询message_type=REQUEST且message_id=0x0200的消息
+        where.message_type = 'REQUEST';
+        where.message_id = '0x0200';
+      } else {
+        where.message_type = type;
+      }
     }
 
     const result = await prisma.message.updateMany({
@@ -695,7 +707,13 @@ router.delete('/clear-all', authenticate, async (req: Request, res: Response, ne
     };
 
     if (type) {
-      where.message_type = type;
+      if (type === 'fence') {
+        // 围栏消息特殊处理：查询message_type=REQUEST且message_id=0x0200的消息
+        where.message_type = 'REQUEST';
+        where.message_id = '0x0200';
+      } else {
+        where.message_type = type;
+      }
     }
 
     const result = await prisma.message.deleteMany({

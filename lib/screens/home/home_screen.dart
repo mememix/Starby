@@ -553,7 +553,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 0),
                   // 第二行：位置（字体适当调大）
                   Text(
                     locationText,
@@ -578,21 +578,29 @@ class _HomeScreenState extends State<HomeScreen> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
+            color: Colors.grey.withValues(alpha: 0.15),
+            blurRadius: 8,
             offset: const Offset(0, -2),
+          ),
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -1),
           ),
         ],
       ),
       child: SafeArea(
         top: false,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(Icons.home_outlined, '首页', 0),
-            _buildNavItem(Icons.message, '消息', 1),
-            _buildNavItem(Icons.person_outline, '我的', 2),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(Icons.home_outlined, '首页', 0),
+              _buildNavItem(Icons.message, '消息', 1),
+              _buildNavItem(Icons.person_outline, '我的', 2),
+            ],
+          ),
         ),
       ),
     );
@@ -622,7 +630,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             label,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 12,
               color: isSelected ? AppColors.primary : Colors.grey[400],
             ),
           ),

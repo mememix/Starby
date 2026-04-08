@@ -61,7 +61,7 @@ dependencies:
   path_provider: ^2.1.1
 
   # 二维码扫描
-  mobile_scanner: ^4.0.1
+  mobile_scanner: ^7.2.0
 
 dev_dependencies:
   flutter_test:

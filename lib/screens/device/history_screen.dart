@@ -8,6 +8,7 @@ import '../../models/location.dart';
 import '../../routes.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
+import '../../utils/trajectory_calibrator.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, this.deviceId});
@@ -22,6 +23,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   late String deviceId;
+  List<Location> _originalLocations = [];
   List<Location> _locations = [];
   DateTime _selectedDate = DateTime.now();
   String? _displayDateStr; // 用于显示选择的日期字符串
@@ -57,16 +59,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
       // 更新显示的日期字符串
       _displayDateStr = '${_selectedDate.year}年${_selectedDate.month}月${_selectedDate.day}日';
 
-      final locations = await ApiService().getDeviceHistory(
+      _originalLocations = await ApiService().getDeviceHistory(
         deviceId,
         start: start,
         end: end,
         limit: 10000,
       );
 
+      // 轨迹校准：过滤掉几乎一致的点位
+      _locations = TrajectoryCalibrator.calibrate(_originalLocations);
+      
+      // 打印校准统计信息
+      if (_originalLocations.length > _locations.length) {
+        final stats = TrajectoryCalibrator.getCalibrationStats(_originalLocations, _locations);
+        debugPrint('轨迹校准: 原始${stats['originalCount']}点 → 校准后${stats['calibratedCount']}点 (减少${stats['reduction']}%)');
+      }
+
       if (mounted) {
         setState(() {
-          _locations = locations;
           _isLoading = false;
         });
       }
@@ -89,17 +99,77 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  // 按时间分组位置点
-  Map<String, List<Location>> _groupByHour() {
-    final Map<String, List<Location>> grouped = {};
-    for (var location in _locations) {
-      final hourStr = '${location.timestamp.hour.toString().padLeft(2, '0')}:00';
-      if (!grouped.containsKey(hourStr)) {
-        grouped[hourStr] = [];
+  // 检测移动时间段（按移动时段分组，而非按小时）
+  Map<String, List<Location>> _groupByMovingPeriod() {
+    if (_locations.isEmpty) return {};
+
+    final Map<String, List<Location>> periods = {};
+    List<Location> currentPeriod = [];
+    
+    // 静止判断阈值（米）
+    const double stationaryThreshold = 10.0;
+    // 时间间隔阈值（秒）- 超过这个时间视为新的移动段
+    const int timeGapThreshold = 300; // 5分钟
+    
+    Location? prevLocation;
+    
+    for (int i = 0; i < _locations.length; i++) {
+      final location = _locations[i];
+      
+      if (prevLocation == null) {
+        // 第一个点，开始新时段
+        currentPeriod.add(location);
+        prevLocation = location;
+        continue;
       }
-      grouped[hourStr]!.add(location);
+      
+      // 计算与前一点的距离
+      final distance = TrajectoryCalibrator.calculateDistance(
+        prevLocation.lat,
+        prevLocation.lng,
+        location.lat,
+        location.lng,
+      );
+      
+      // 计算时间差
+      final timeDiff = location.timestamp.difference(prevLocation.timestamp).inSeconds;
+      
+      // 判断是否需要新时段：
+      // 1. 距离超过阈值，或者
+      // 2. 时间间隔超过阈值
+      if (distance > stationaryThreshold || timeDiff > timeGapThreshold) {
+        // 如果当前时段有多个点，保存该时段
+        if (currentPeriod.length >= 2) {
+          final periodKey = _formatPeriodKey(currentPeriod);
+          periods[periodKey] = List.from(currentPeriod);
+        }
+        // 开始新时段
+        currentPeriod = [location];
+      } else {
+        // 同一时段，继续添加
+        currentPeriod.add(location);
+      }
+      
+      prevLocation = location;
     }
-    return grouped;
+    
+    // 保存最后一个时段（如果有多个点）
+    if (currentPeriod.length >= 2) {
+      final periodKey = _formatPeriodKey(currentPeriod);
+      periods[periodKey] = currentPeriod;
+    }
+    
+    return periods;
+  }
+
+  // 格式化时段键（显示开始和结束时间）
+  String _formatPeriodKey(List<Location> period) {
+    if (period.isEmpty) return '';
+    final start = period.first;
+    final end = period.last;
+    final startTime = '${start.timestamp.hour.toString().padLeft(2, '0')}:${start.timestamp.minute.toString().padLeft(2, '0')}';
+    final endTime = '${end.timestamp.hour.toString().padLeft(2, '0')}:${end.timestamp.minute.toString().padLeft(2, '0')}';
+    return '$startTime - $endTime';
   }
 
   @override
@@ -214,7 +284,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       );
     }
 
-    final grouped = _groupByHour();
+    final grouped = _groupByMovingPeriod();
 
     if (_locations.isEmpty) {
       return Center(
@@ -235,6 +305,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     // 计算总里程（简单估算，实际需要计算路径）
     final totalPoints = _locations.length;
+    final originalPoints = _originalLocations.length;
     final estimatedDistance = (totalPoints * 0.05).toStringAsFixed(1);
 
     return SingleChildScrollView(
@@ -243,7 +314,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 数据统计卡片
-          _buildStatsCard(estimatedDistance, totalPoints),
+          _buildStatsCard(estimatedDistance, totalPoints, originalPoints),
           const SizedBox(height: 16),
           // 播放轨迹按钮（移到列表上方）
           _buildPlayButton(),
@@ -256,7 +327,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   // 数据统计卡片
-  Widget _buildStatsCard(String distance, int points) {
+  Widget _buildStatsCard(String distance, int points, int originalPoints) {
+    final reductionPercent = originalPoints > 0
+        ? ((originalPoints - points) / originalPoints * 100).toStringAsFixed(1)
+        : '0.0';
+    
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -271,13 +346,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _buildStatItem(distance, '公里'),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatItem(distance, '公里'),
+              ),
+              Expanded(
+                child: _buildStatItem('$points/$originalPoints', '位置点'),
+              ),
+            ],
           ),
-          Expanded(
-            child: _buildStatItem(points.toString(), '位置点'),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '已优化: 减少 $reductionPercent% 点位',
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.primary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
         ],
       ),
@@ -331,16 +426,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // 轨迹项
-  Widget _buildTrackItem(String hour, List<Location> locations) {
+  // 轨迹项（显示移动时间段）
+  Widget _buildTrackItem(String period, List<Location> locations) {
     final firstLocation = locations.first;
-    final timeStr = '${firstLocation.timestamp.hour.toString().padLeft(2, '0')}:${firstLocation.timestamp.minute.toString().padLeft(2, '0')}';
+    final lastLocation = locations.last;
 
     return GestureDetector(
       onTap: () {
-        // TODO: 在地图上查看该时间段轨迹
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('查看轨迹详情')),
+        // 传递该时间段的位置点到轨迹回放页
+        Navigator.pushNamed(
+          context,
+          AppRoutes.trackReplay,
+          arguments: {
+            'deviceId': deviceId,
+            'locations': locations,
+          },
         );
       },
       child: Container(
@@ -357,30 +457,73 @@ class _HistoryScreenState extends State<HistoryScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  hour,
+                  period,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: AppColors.textPrimary,
                   ),
                 ),
-                Text(
-                  timeStr,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${locations.length} 点',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(
+                  Icons.location_on,
+                  size: 14,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    firstLocation.address ?? '起点: ${firstLocation.lat.toStringAsFixed(4)}, ${firstLocation.lng.toStringAsFixed(4)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 4),
-            Text(
-              '${locations.length} 个位置点',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+            Row(
+              children: [
+                const Icon(
+                  Icons.flag,
+                  size: 14,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    lastLocation.address ?? '终点: ${lastLocation.lat.toStringAsFixed(4)}, ${lastLocation.lng.toStringAsFixed(4)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -394,7 +537,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       width: double.infinity,
       height: 48,
       child: ElevatedButton(
-        onPressed: _locations.isEmpty
+        onPressed: _originalLocations.isEmpty
             ? null
             : () {
                 Navigator.pushNamed(
@@ -402,7 +545,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   AppRoutes.trackReplay,
                   arguments: {
                     'deviceId': deviceId,
-                    'locations': _locations,
+                    'locations': _originalLocations,
                   },
                 );
               },
